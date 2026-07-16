@@ -1,20 +1,39 @@
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
+from __future__ import annotations
+
+from PySide6.QtCore import QElapsedTimer, QTimer
+from PySide6.QtGui import QPainter
+from PySide6.QtWidgets import QWidget
+
+from app.rendering import AnimationEngine, CoreRenderer, RendererConfig, Scene
 
 
 class AICore(QWidget):
     def __init__(self):
         super().__init__()
 
-        layout = QVBoxLayout(self)
+        self.config = RendererConfig()
+        self.scene = Scene(self.config)
+        self.animation_engine = AnimationEngine(self.config)
+        self.renderer = CoreRenderer(self.config)
 
-        title = QLabel("ADRIEN Presence Engine")
-        title.setAlignment(Qt.AlignCenter)
+        self.clock = QElapsedTimer()
+        self.clock.start()
 
-        state = QLabel("Status: BOOTING")
-        state.setAlignment(Qt.AlignCenter)
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.animate)
+        self.timer.start(16)
 
-        layout.addStretch()
-        layout.addWidget(title)
-        layout.addWidget(state)
-        layout.addStretch()
+        self.setMinimumSize(480, 420)
+
+    def animate(self):
+        delta_seconds = self.clock.restart() / 1000.0
+        self.animation_engine.tick(self.scene, delta_seconds)
+        self.update()
+
+    def paintEvent(self, event):
+        self.scene.set_viewport(self.width(), self.height())
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        self.renderer.render(painter, self.scene)

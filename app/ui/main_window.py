@@ -1,5 +1,4 @@
 from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QWidget
-
 from app.ui.ai_core import AICore
 from app.ui.sidebar import Sidebar
 from app.ui.status_bar import AdrienStatusBar
