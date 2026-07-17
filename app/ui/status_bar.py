@@ -25,8 +25,9 @@ class AdrienStatusBar(QStatusBar):
             f"VISUAL: {source.name} -> {target.name} ({percentage}%)"
         )
 
-    def show_materialization(self, progress, phase) -> None:
+    def show_materialization(self, progress, phase, active_particles=0, seed=None) -> None:
+        seed_text = f"    SEED: {seed}" if seed is not None else ""
         self.showMessage(
             f"STATE: MATERIALIZING    MATERIALIZATION: {round(progress * 100)}%    "
-            f"PHASE: {phase.name}"
+            f"PHASE: {phase.name}    PARTICLES: {active_particles}{seed_text}"
         )

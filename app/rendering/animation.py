@@ -43,17 +43,22 @@ class AnimationEngine:
                 )
                 scene.ring_assembly = 0.0
             elif controller.phase is MaterializationPhase.CORE_FORMATION:
-                scene.core_alpha = 0.08 + 0.92 * phase_progress
+                formation_pulse = math.sin(math.pi * self._clamp((phase_progress - 0.68) / 0.32, 0.0, 1.0))
+                scene.core_alpha = min(1.0, 0.08 + 0.86 * phase_progress + 0.09 * formation_pulse)
                 scene.glow_intensity = scene.profile.glow_intensity * (
                     0.46 + 0.44 * phase_progress
                 )
                 scene.ring_assembly = phase_progress
             else:
-                scene.core_alpha = 1.0
+                scene.core_alpha = 0.94 + 0.06 * phase_progress
                 scene.glow_intensity = scene.profile.glow_intensity * (
                     0.9 + 0.1 * phase_progress
                 )
                 scene.ring_assembly = 1.0
+                if phase_progress >= 0.18 and not scene.energy_wave_triggered:
+                    scene.energy_wave_triggered = True
+                if scene.energy_wave_triggered:
+                    scene.energy_wave_progress = self._clamp((phase_progress - 0.18) / 0.72, 0.0, 1.0)
             return
 
         target_visibility = 1.0
@@ -132,7 +137,8 @@ class AnimationEngine:
                     0.0,
                     1.0,
                 )
-                scene.ring_reveals[index] = self._ease_out_cubic(reveal)
+                overshoot = 1.04 + (index % 2) * 0.025
+                scene.ring_reveals[index] = self._ease_out_cubic(reveal) * overshoot
             else:
                 scene.ring_reveals[index] = self._approach(
                     scene.ring_reveals[index], 1.0, delta_seconds * 2.2
@@ -141,6 +147,8 @@ class AnimationEngine:
     def _animate_particles(self, scene: Scene, delta_seconds: float) -> None:
         for particle in scene.particles:
             particle.age += delta_seconds
+            if scene.is_materializing:
+                particle.remember_trail()
             organic_wobble = math.sin(
                 scene.elapsed_seconds * particle.orbit_wobble_speed + particle.phase
             )
@@ -159,14 +167,19 @@ class AnimationEngine:
                     radius_multiplier = 1.35
                     attraction_strength = 0.25
                 elif controller.phase is MaterializationPhase.CONVERGENCE:
-                    radius_multiplier = 1.35 - 0.82 * phase_progress
-                    attraction_strength = 1.5 + particle.depth * 1.7
+                    radius, angle = particle.curved_position(phase_progress)
+                    particle.orbit_radius = radius
+                    particle.angle_degrees = angle
+                    radius_multiplier = 1.0
+                    attraction_strength = 0.0
                 elif controller.phase is MaterializationPhase.CORE_FORMATION:
                     radius_multiplier = 0.53 + 0.19 * phase_progress
                     attraction_strength = 2.0 + (particle.phase % 1.2)
                 else:
                     radius_multiplier = 0.72 + 0.28 * phase_progress
-                    attraction_strength = 2.2
+                    attraction_strength = 2.2 * (1.0 - phase_progress) + 0.35
+                    if phase_progress >= 0.92:
+                        particle.clear_trail()
             target_radius = particle.target_radius * radius_multiplier
             if (
                 attraction_strength > 0.0

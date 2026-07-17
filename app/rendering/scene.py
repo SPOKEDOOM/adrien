@@ -37,6 +37,10 @@ class Scene:
     rng: random.Random = field(default_factory=random.Random)
     transition_controller: StateTransitionController = field(init=False)
     materialization_controller: MaterializationController = field(init=False)
+    materialization_seed: int | None = None
+    active_materialization_seed: int | None = None
+    energy_wave_progress: float = 0.0
+    energy_wave_triggered: bool = False
 
     def __post_init__(self) -> None:
         self.transition_controller = StateTransitionController(self.presence_state)
@@ -82,9 +86,18 @@ class Scene:
         self.glow_intensity = 0.0
         self.ring_assembly = 0.0
         self.ring_reveals = [0.0 for _ in self.config.ring_offsets]
+        seed = self.materialization_seed
+        if seed is None:
+            seed = self.rng.randrange(0, 2**31)
+        self.active_materialization_seed = seed
+        self.rng.seed(seed)
+        path_rng = random.Random(seed)
+        self.energy_wave_progress = 0.0
+        self.energy_wave_triggered = False
         for particle in self.particles:
-            scatter = self.rng.uniform(1.2, 1.65)
+            scatter = path_rng.uniform(1.2, 1.65)
             particle.orbit_radius = max(particle.orbit_radius, particle.target_radius * scatter)
+            particle.configure_materialization(path_rng)
         self.materialization_controller.start()
 
     def set_state(self, state: PresenceState) -> None:
@@ -108,4 +121,7 @@ class Scene:
         return int(self.config.particle_count * density)
 
     def spawn_particle(self, materializing: bool = False) -> None:
-        self.particles.append(Particle.create(self.config, self.rng, materializing))
+        particle = Particle.create(self.config, self.rng, materializing)
+        if materializing:
+            particle.configure_materialization(self.rng)
+        self.particles.append(particle)

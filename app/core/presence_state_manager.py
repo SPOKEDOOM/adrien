@@ -75,6 +75,12 @@ class PresenceStateManager(QObject):
         self._apply_transition(PresenceState.BOOTING)
         return True
 
+    def replay_materialization_for_development(self) -> bool:
+        """Replay only from stable states, still emitting the normal state contract."""
+        if self._current_state not in (PresenceState.READY, PresenceState.SLEEP):
+            return False
+        return self._apply_transition(PresenceState.MATERIALIZING)
+
     def _apply_transition(self, state: PresenceState) -> bool:
         previous = self._current_state
         self._previous_state = previous

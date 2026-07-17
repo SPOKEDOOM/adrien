@@ -182,3 +182,15 @@ Entering `MATERIALIZING` starts the controller. Existing particles are reused an
 The controller's `completed` signal is handled by `AICore`, which requests `READY` through `PresenceStateManager`. There is no fixed READY timer. Leaving `MATERIALIZING` early cancels the controller without resetting current visibility, core, glow, particle, or blended-profile values.
 
 Development key 2 restarts materialization when selected from another state. While active, the status bar displays total percentage and current phase. The prototype retains the existing bounded particle population and performs no per-frame collection rebuild, per-pixel processing, or blocking work.
+
+## Sprint 4 Phase 2: Cinematic Materialization Polish
+
+Phase 2 retains the four-phase, 3.2-second controller and the existing renderer stack. At the start of each run, every particle receives cached trajectory and timing data. Convergence uses a quadratic interpolation in polar space: start radius/angle, a randomized control radius with a stable angular spiral offset, and the particle's compact formation radius. Control values are never regenerated per frame.
+
+Particles arrive in three controlled waves. Per-particle delay, duration, and depth-aware easing vary within bounded ranges. Background, mid-field, and foreground layers tune depth, apparent size, opacity, convergence pace, and spiral amount without blur or extra particles. During convergence each particle retains only its two previous polar positions; the renderer draws these as short, quickly fading trail fragments and clears them during stabilization.
+
+Core formation begins compressed and faint, grows progressively, and receives a small sinusoidal intensity accent in the final third before normalizing. Rings preserve their established style and rotation directions while using per-ring delays, partial arc growth, opacity approach, and a small reveal overshoot. Early in `STABILIZATION`, a single thin energy wave expands from the core and fades quadratically. Particle attraction and trail strength reduce as normal orbital values are restored, while ring reveal, core brightness, and glow settle into values inherited by `READY`.
+
+When development controls are enabled, `M` requests a replay only from `READY` or `SLEEP` through `PresenceStateManager`; numeric key `2` remains unchanged. `MainWindow.MATERIALIZATION_DEBUG_SEED` defaults to `42` for repeatable development paths. Set the scene seed to `None` for a randomly selected production run seed. The status bar reports phase, percentage, active particle count, and the active seed.
+
+Performance remains bounded by the existing particle count. Path, layer, delay, duration, and easing variation are cached once per sequence; trails use exactly two scalar position pairs; colors remain cached; no real blur, position-history collection, extra timer, blocking loop, or per-frame randomness is introduced.

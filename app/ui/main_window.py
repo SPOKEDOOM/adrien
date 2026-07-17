@@ -9,6 +9,7 @@ from app.ui.status_bar import AdrienStatusBar
 
 class MainWindow(QMainWindow):
     DEVELOPMENT_STATE_CONTROLS = True
+    MATERIALIZATION_DEBUG_SEED = 42
 
     def __init__(self):
         super().__init__()
@@ -23,6 +24,8 @@ class MainWindow(QMainWindow):
         self.sidebar = Sidebar()
         self.state_manager = PresenceStateManager(parent=self)
         self.core = AICore(self.state_manager)
+        if self.DEVELOPMENT_STATE_CONTROLS:
+            self.core.scene.materialization_seed = self.MATERIALIZATION_DEBUG_SEED
 
         layout.addWidget(self.sidebar)
         layout.addWidget(self.core, 1)
@@ -74,7 +77,10 @@ class MainWindow(QMainWindow):
 
     def _on_materialization_progress(self, progress, phase) -> None:
         if self.DEVELOPMENT_STATE_CONTROLS:
-            self.presence_status_bar.show_materialization(progress, phase)
+            self.presence_status_bar.show_materialization(
+                progress, phase, len(self.core.scene.particles),
+                self.core.scene.active_materialization_seed,
+            )
 
     def _install_state_shortcuts(self) -> None:
         if not self.DEVELOPMENT_STATE_CONTROLS:
@@ -89,3 +95,9 @@ class MainWindow(QMainWindow):
                 )
             )
             self._state_shortcuts.append(shortcut)
+        replay = QShortcut(QKeySequence("M"), self)
+        replay.setContext(Qt.WindowShortcut)
+        replay.activated.connect(
+            self.state_manager.replay_materialization_for_development
+        )
+        self._state_shortcuts.append(replay)

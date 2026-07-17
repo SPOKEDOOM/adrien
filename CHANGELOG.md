@@ -1,5 +1,14 @@
 # ADRIEN Changelog
 
+## Sprint 4 Phase 2
+
+- Added deterministic cached quadratic curved trajectories with spiral angle offsets and three staggered arrival waves.
+- Added background, mid-field, and foreground particle depth layers plus bounded two-position convergence trails.
+- Polished compressed core formation, late formation pulse, independent ring reveal overshoot, and smooth READY settling.
+- Added one subtle outward stabilization wave near the end of materialization.
+- Added safe development replay on `M`, deterministic seed diagnostics, and active-particle status output.
+- Added trajectory, timing, depth, trail, replay, wave, stabilization, completion, and clamping tests.
+
 ## Sprint 4 Phase 1
 
 - Added the frame-driven `MaterializationController` and four configurable phases.

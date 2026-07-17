@@ -9,6 +9,7 @@ from app.rendering.config import RendererConfig
 from app.rendering.particle import Particle
 from app.rendering.renderer import Renderer
 from app.rendering.scene import Scene
+from app.rendering.materialization_controller import MaterializationPhase
 
 
 class ParticleRenderer(Renderer):
@@ -40,8 +41,32 @@ class ParticleRenderer(Renderer):
         position = self._position(scene, particle)
         alpha = self._alpha(scene, particle)
         size = self._size(scene, particle)
+        if (
+            scene.is_materializing
+            and scene.materialization_controller.phase in (
+                MaterializationPhase.CONVERGENCE,
+                MaterializationPhase.CORE_FORMATION,
+            )
+            and particle.trail_radius_1 is not None
+        ):
+            self._draw_trail(painter, scene, particle, alpha, size)
         painter.setBrush(self._alpha_colors[alpha])
         painter.drawEllipse(position, size, size)
+
+    def _draw_trail(self, painter, scene, particle, alpha, size) -> None:
+        for radius, angle, fade in (
+            (particle.trail_radius_2, particle.trail_angle_2, 0.18),
+            (particle.trail_radius_1, particle.trail_angle_1, 0.34),
+        ):
+            if radius is None or angle is None:
+                continue
+            radians = math.radians(angle)
+            position = QPointF(
+                scene.center_x + math.cos(radians) * radius,
+                scene.center_y + math.sin(radians) * radius,
+            )
+            painter.setBrush(self._alpha_colors[max(0, min(255, int(alpha * fade)))])
+            painter.drawEllipse(position, size * 0.72, size * 0.72)
 
     def _position(self, scene: Scene, particle: Particle) -> QPointF:
         angle = math.radians(particle.angle_degrees)
