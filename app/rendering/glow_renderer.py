@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QPainter, QRadialGradient
 
@@ -19,12 +21,13 @@ class GlowRenderer(Renderer):
             return
 
         center = QPointF(scene.center_x, scene.center_y)
+        glow_intensity = scene.glow_intensity * self._breathing_factor(scene)
         painter.save()
         painter.setPen(Qt.NoPen)
-        self._draw_soft_ambient_glow(painter, scene, center)
-        self._draw_halo(painter, scene, center)
-        self._draw_outer_glow(painter, scene, center)
-        self._draw_inner_glow(painter, scene, center)
+        self._draw_soft_ambient_glow(painter, scene, center, glow_intensity)
+        self._draw_halo(painter, scene, center, glow_intensity)
+        self._draw_outer_glow(painter, scene, center, glow_intensity)
+        self._draw_inner_glow(painter, scene, center, glow_intensity)
         painter.restore()
 
     def _draw_soft_ambient_glow(
@@ -32,6 +35,7 @@ class GlowRenderer(Renderer):
         painter: QPainter,
         scene: Scene,
         center: QPointF,
+        glow_intensity: float,
     ) -> None:
         radius = max(scene.halo_radius, 1.0)
         gradient = QRadialGradient(center, radius)
@@ -39,15 +43,19 @@ class GlowRenderer(Renderer):
             0.0,
             self.with_alpha(
                 self.config.halo_color,
-                int(34 * scene.visibility * scene.glow_intensity),
+                int(28 * scene.visibility * glow_intensity),
             ),
         )
         gradient.setColorAt(
-            0.48,
+            0.42,
             self.with_alpha(
                 self.config.glow_color,
-                int(16 * scene.visibility * scene.glow_intensity),
+                int(18 * scene.visibility * glow_intensity),
             ),
+        )
+        gradient.setColorAt(
+            0.76,
+            self.with_alpha(self.config.secondary_ring_color, int(7 * scene.visibility)),
         )
         gradient.setColorAt(1.0, self.with_alpha(self.config.halo_color, 0))
 
@@ -64,6 +72,7 @@ class GlowRenderer(Renderer):
         painter: QPainter,
         scene: Scene,
         center: QPointF,
+        glow_intensity: float,
     ) -> None:
         radius = max(scene.halo_radius * 0.72, 1.0)
         gradient = QRadialGradient(center, radius)
@@ -71,16 +80,17 @@ class GlowRenderer(Renderer):
             0.0,
             self.with_alpha(
                 self.config.halo_color,
-                int(52 * scene.visibility * scene.glow_intensity),
+                int(42 * scene.visibility * glow_intensity),
             ),
         )
         gradient.setColorAt(
-            0.45,
+            0.38,
             self.with_alpha(
-                self.config.halo_color,
-                int(24 * scene.visibility * scene.glow_intensity),
+                self.config.secondary_ring_color,
+                int(22 * scene.visibility * glow_intensity),
             ),
         )
+        gradient.setColorAt(0.72, self.with_alpha(self.config.glow_color, int(8 * scene.visibility)))
         gradient.setColorAt(1.0, self.with_alpha(self.config.halo_color, 0))
 
         painter.setBrush(gradient)
@@ -91,6 +101,7 @@ class GlowRenderer(Renderer):
         painter: QPainter,
         scene: Scene,
         center: QPointF,
+        glow_intensity: float,
     ) -> None:
         radius = max(scene.bloom_radius, 1.0)
         gradient = QRadialGradient(center, radius)
@@ -98,16 +109,17 @@ class GlowRenderer(Renderer):
             0.0,
             self.with_alpha(
                 self.config.glow_color,
-                int(92 * scene.visibility * scene.glow_intensity),
+                int(74 * scene.visibility * glow_intensity),
             ),
         )
         gradient.setColorAt(
-            0.45,
+            0.36,
             self.with_alpha(
                 self.config.glow_color,
-                int(38 * scene.visibility * scene.glow_intensity),
+                int(34 * scene.visibility * glow_intensity),
             ),
         )
+        gradient.setColorAt(0.7, self.with_alpha(self.config.halo_color, int(10 * scene.visibility)))
         gradient.setColorAt(1.0, self.with_alpha(self.config.glow_color, 0))
 
         painter.setBrush(gradient)
@@ -118,6 +130,7 @@ class GlowRenderer(Renderer):
         painter: QPainter,
         scene: Scene,
         center: QPointF,
+        glow_intensity: float,
     ) -> None:
         radius = max(scene.core_radius * 1.45, 1.0)
         gradient = QRadialGradient(center, radius)
@@ -125,17 +138,21 @@ class GlowRenderer(Renderer):
             0.0,
             self.with_alpha(
                 self.config.core_inner_color,
-                int(138 * scene.core_alpha * scene.glow_intensity),
+                int(118 * scene.core_alpha * glow_intensity),
             ),
         )
         gradient.setColorAt(
             0.56,
             self.with_alpha(
                 self.config.glow_color,
-                int(64 * scene.core_alpha * scene.glow_intensity),
+                int(56 * scene.core_alpha * glow_intensity),
             ),
         )
         gradient.setColorAt(1.0, self.with_alpha(self.config.glow_color, 0))
 
         painter.setBrush(gradient)
         painter.drawEllipse(center, radius, radius)
+
+    @staticmethod
+    def _breathing_factor(scene: Scene) -> float:
+        return 0.94 + math.sin(scene.elapsed_seconds * 1.15) * 0.06

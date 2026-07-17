@@ -15,6 +15,10 @@ class EnergyCoreRenderer(Renderer):
 
     def __init__(self, config: RendererConfig):
         super().__init__(config)
+        self._unit_points = tuple(
+            (math.tau * step) / config.core_shape_points
+            for step in range(config.core_shape_points + 1)
+        )
 
     def render(self, painter: QPainter, scene: Scene) -> None:
         if scene.core_alpha <= 0.0:
@@ -37,13 +41,11 @@ class EnergyCoreRenderer(Renderer):
         return gradient
 
     def _core_path(self, scene: Scene) -> QPainterPath:
-        steps = self.config.core_shape_points
         base_radius = scene.core_radius
         deformation = scene.core_deformation
         path = QPainterPath()
 
-        for step in range(steps + 1):
-            theta = (math.tau * step) / steps
+        for step, theta in enumerate(self._unit_points):
             radius = self._deformed_radius(base_radius, deformation, theta, scene)
             point = QPointF(
                 scene.center_x + math.cos(theta) * radius,

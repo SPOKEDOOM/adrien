@@ -16,6 +16,8 @@ class ParticleRenderer(Renderer):
 
     def __init__(self, config: RendererConfig):
         super().__init__(config)
+        self._particle_color = QColor(config.particle_color)
+        self._alpha_colors = [self._color_with_alpha(alpha) for alpha in range(256)]
 
     def render(self, painter: QPainter, scene: Scene) -> None:
         painter.save()
@@ -37,16 +39,20 @@ class ParticleRenderer(Renderer):
 
         position = self._position(scene, particle)
         alpha = self._alpha(scene, particle)
-        color = QColor(self.config.particle_color)
-        color.setAlpha(alpha)
-
-        painter.setBrush(color)
-        painter.drawEllipse(position, particle.size, particle.size)
+        size = self._size(scene, particle)
+        painter.setBrush(self._alpha_colors[alpha])
+        painter.drawEllipse(position, size, size)
 
     def _position(self, scene: Scene, particle: Particle) -> QPointF:
         angle = math.radians(particle.angle_degrees)
-        drift = math.sin(scene.elapsed_seconds * particle.drift_speed + particle.phase)
-        radius = particle.orbit_radius + drift * particle.drift_amplitude
+        elapsed = scene.elapsed_seconds
+        drift = math.sin(elapsed * particle.drift_speed + particle.phase)
+        depth_drift = math.cos(elapsed * particle.orbit_wobble_speed + particle.size_phase)
+        radius = (
+            particle.orbit_radius
+            + drift * particle.drift_amplitude
+            + depth_drift * (particle.depth - 1.0) * 9.0
+        )
 
         return QPointF(
             scene.center_x + math.cos(angle) * radius,
@@ -58,15 +64,27 @@ class ParticleRenderer(Renderer):
         normalized = (wave + 1.0) / 2.0
         alpha_range = self.config.particle_max_alpha - self.config.particle_min_alpha
         lifecycle_fade = 1.0
+        depth_alpha = 0.76 + (particle.depth - 0.72) * 0.34
 
         if particle.life_progress > 0.78:
             lifecycle_fade = max(0.0, 1.0 - ((particle.life_progress - 0.78) / 0.22))
 
-        return int(
+        return max(0, min(255, int(
             (
                 self.config.particle_min_alpha
                 + alpha_range * normalized * particle.opacity
             )
             * scene.visibility
             * lifecycle_fade
-        )
+            * depth_alpha
+        )))
+
+    @staticmethod
+    def _size(scene: Scene, particle: Particle) -> float:
+        size_wave = math.sin(scene.elapsed_seconds * 0.9 + particle.size_phase) * 0.08
+        return max(0.35, particle.size * particle.depth * (1.0 + size_wave))
+
+    def _color_with_alpha(self, alpha: int) -> QColor:
+        color = QColor(self._particle_color)
+        color.setAlpha(alpha)
+        return color

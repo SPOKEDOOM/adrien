@@ -25,6 +25,9 @@ class Particle:
     drift_amplitude: float
     twinkle_speed: float
     fade_speed: float
+    depth: float
+    size_phase: float
+    orbit_wobble_speed: float
 
     @classmethod
     def create(
@@ -64,6 +67,9 @@ class Particle:
             drift_amplitude=rng.uniform(2.0, 10.0),
             twinkle_speed=rng.uniform(1.5, 4.2),
             fade_speed=config.particle_fade_speed * rng.uniform(0.7, 1.35),
+            depth=rng.uniform(0.72, 1.24),
+            size_phase=rng.uniform(0.0, 6.283185307179586),
+            orbit_wobble_speed=rng.uniform(0.35, 1.2),
         )
 
     @property
@@ -104,3 +110,6 @@ class Particle:
         self.drift_amplitude = fresh_particle.drift_amplitude
         self.twinkle_speed = fresh_particle.twinkle_speed
         self.fade_speed = fresh_particle.fade_speed
+        self.depth = fresh_particle.depth
+        self.size_phase = fresh_particle.size_phase
+        self.orbit_wobble_speed = fresh_particle.orbit_wobble_speed

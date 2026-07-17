@@ -117,8 +117,11 @@ class AnimationEngine:
     def _animate_particles(self, scene: Scene, delta_seconds: float) -> None:
         for particle in scene.particles:
             particle.age += delta_seconds
+            organic_wobble = math.sin(
+                scene.elapsed_seconds * particle.orbit_wobble_speed + particle.phase
+            )
             particle.angle_degrees += (
-                particle.angular_velocity
+                (particle.angular_velocity + organic_wobble * 4.5)
                 * scene.profile.particle_speed_multiplier
                 * delta_seconds
             )

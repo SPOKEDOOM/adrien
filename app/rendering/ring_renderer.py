@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QColor, QPainter, QPen
 
@@ -13,6 +15,12 @@ class RingRenderer(Renderer):
 
     def __init__(self, config: RendererConfig):
         super().__init__(config)
+        self._segment_counts = tuple(3 + index for index in range(len(config.ring_offsets)))
+        self._accent_spans = tuple(max(36, span // 3) for span in config.ring_arc_spans)
+        self._base_pens = tuple(
+            self._pen(self._ring_color(index), width)
+            for index, width in enumerate(config.ring_widths)
+        )
 
     def render(self, painter: QPainter, scene: Scene) -> None:
         self.render_inner_rings(painter, scene)
@@ -60,20 +68,21 @@ class RingRenderer(Renderer):
             return
 
         radius = scene.core_radius + offset
-        angle = scene.ring_angles[index]
+        angle = self._layered_angle(scene, index)
         arc_span = self.config.ring_arc_spans[index]
-        color = self._ring_color(index)
+        pen = QPen(self._base_pens[index])
+        color = pen.color()
         color.setAlpha(int(255 * min(1.0, scene.ring_opacities[index])))
+        pen.setColor(color)
 
         painter.save()
         painter.rotate(angle)
-        painter.setPen(self._pen(color, self.config.ring_widths[index]))
+        painter.setPen(pen)
 
         bounds = QRectF(-radius, -radius, radius * 2.0, radius * 2.0)
         painter.drawArc(bounds, 0, arc_span * 16)
 
-        accent_span = max(36, arc_span // 3)
-        painter.drawArc(bounds, 190 * 16, accent_span * 16)
+        painter.drawArc(bounds, 190 * 16, self._accent_spans[index] * 16)
         self._draw_segments(painter, bounds, arc_span, index)
 
         painter.restore()
@@ -85,7 +94,7 @@ class RingRenderer(Renderer):
         arc_span: int,
         index: int,
     ) -> None:
-        segment_count = 3 + index
+        segment_count = self._segment_counts[index]
         segment_span = max(8, arc_span // (segment_count * 3))
 
         for segment_index in range(segment_count):
@@ -97,6 +106,12 @@ class RingRenderer(Renderer):
             return QColor(self.config.ring_color)
 
         return QColor(self.config.secondary_ring_color)
+
+    @staticmethod
+    def _layered_angle(scene: Scene, index: int) -> float:
+        phase = index * 1.37
+        drift = math.sin(scene.elapsed_seconds * (0.26 + index * 0.07) + phase)
+        return scene.ring_angles[index] + drift * (1.6 + index * 0.55)
 
     @staticmethod
     def _pen(color: QColor, width: float) -> QPen:

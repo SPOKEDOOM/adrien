@@ -13,6 +13,8 @@ class BackgroundRenderer(Renderer):
 
     def __init__(self, config: RendererConfig):
         super().__init__(config)
+        self._base_gradient_height = -1
+        self._base_gradient = QLinearGradient()
 
     def render(self, painter: QPainter, scene: Scene) -> None:
         painter.save()
@@ -21,17 +23,24 @@ class BackgroundRenderer(Renderer):
         painter.restore()
 
     def _draw_base_gradient(self, painter: QPainter, scene: Scene) -> None:
-        gradient = QLinearGradient(0.0, 0.0, 0.0, float(scene.viewport_height))
-        gradient.setColorAt(0.0, self.config.background_top_color)
-        gradient.setColorAt(0.54, self.config.background_color)
-        gradient.setColorAt(1.0, self.config.background_bottom_color)
+        if scene.viewport_height != self._base_gradient_height:
+            self._base_gradient_height = scene.viewport_height
+            self._base_gradient = QLinearGradient(
+                0.0,
+                0.0,
+                0.0,
+                float(scene.viewport_height),
+            )
+            self._base_gradient.setColorAt(0.0, self.config.background_top_color)
+            self._base_gradient.setColorAt(0.54, self.config.background_color)
+            self._base_gradient.setColorAt(1.0, self.config.background_bottom_color)
 
         painter.fillRect(
             0,
             0,
             scene.viewport_width,
             scene.viewport_height,
-            gradient,
+            self._base_gradient,
         )
 
     def _draw_energy_field(self, painter: QPainter, scene: Scene) -> None:

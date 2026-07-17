@@ -30,8 +30,8 @@ class CoreRenderer:
         painter.save()
 
         self.background_renderer.render(painter, scene)
-        self.glow_renderer.render(painter, scene)
         self.particle_renderer.render(painter, scene)
+        self.glow_renderer.render(painter, scene)
         self.energy_core_renderer.render(painter, scene)
         self.ring_renderer.render_inner_rings(painter, scene)
         self.ring_renderer.render_outer_rings(painter, scene)
