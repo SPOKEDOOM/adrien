@@ -127,4 +127,39 @@ Each `PresenceState` has one immutable `AnimationProfile`. Profiles centralize p
 
 `Scene.profile` exposes the active profile. `AnimationEngine` converts its values into mutable frame data on `Scene`; renderers consume scene/profile values and only draw. Neither `Scene`, `AnimationEngine`, nor a renderer validates operational transitions.
 
-Temporary development controls map keys 1-7 to the seven states. Key 1 invokes the controlled reset; all other keys use normal validated transitions. The status bar display and controls can be disabled with `MainWindow.DEVELOPMENT_STATE_CONTROLS`.
+Temporary development controls map keys 1-7 directly to the seven visual test states through the manager's explicit development-only transition method. Production requests continue to use the validated transition map. The status display and controls can be disabled with `MainWindow.DEVELOPMENT_STATE_CONTROLS`.
+
+## Sprint 3 Phase 2: Visual State Transitions
+
+`StateTransitionController` owns visual blending while `PresenceStateManager` continues to own only operational state. `Scene.profile` exposes a cached mutable blended profile rather than switching directly between state-profile presets.
+
+```text
+PresenceStateManager
+        -> Scene
+        -> StateTransitionController
+        -> blended AnimationProfile
+        -> AnimationEngine
+        -> CoreRenderer
+        -> dedicated renderers
+```
+
+The controller snapshots the current blended values whenever a transition starts. If another state arrives before completion, those in-flight values become the new source, preventing rollback or visual jumps. Numeric fields are blended once per animation tick with delta-time progress and transition-specific easing. Renderers remain state-agnostic and consume only scene/profile values.
+
+Configured durations are:
+
+| Transition | Duration |
+| --- | ---: |
+| BOOTING -> MATERIALIZING | 1.2 s |
+| MATERIALIZING -> READY | 1.5 s |
+| READY -> LISTENING | 0.35 s |
+| LISTENING -> THINKING | 0.6 s |
+| THINKING -> RESPONDING | 0.45 s |
+| RESPONDING -> READY | 0.8 s |
+| READY -> SLEEP | 1.8 s |
+| SLEEP -> MATERIALIZING | 1.4 s |
+
+Unlisted development transitions use a centralized 0.7-second fallback. Smoothstep is the calm default, ease-out cubic is used for responsive/energetic entry, and ease-in-out cubic is used for focused or awakening transitions.
+
+Profile-driven entry accent values provide a soft core expansion for LISTENING, brief ring acceleration for THINKING, an outward pulse for RESPONDING, and stabilization for READY. No renderer checks operational states.
+
+When `MainWindow.DEVELOPMENT_STATE_CONTROLS` is enabled, the status bar shows operational state, visual source and target, and percentage progress. Keys 1-7 remain window-scoped visual test controls. Disable that flag to remove both the shortcuts and transition display.

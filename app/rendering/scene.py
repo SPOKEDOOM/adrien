@@ -5,7 +5,8 @@ from dataclasses import dataclass, field
 
 from app.rendering.config import RendererConfig
 from app.rendering.particle import Particle
-from app.rendering.profiles import ANIMATION_PROFILES, AnimationProfile
+from app.rendering.profiles import AnimationProfile
+from app.rendering.state_transition import StateTransitionController
 from app.core.presence_state import PresenceState
 
 
@@ -33,8 +34,10 @@ class Scene:
     ring_opacities: list[float] = field(default_factory=list)
     particles: list[Particle] = field(default_factory=list)
     rng: random.Random = field(default_factory=random.Random)
+    transition_controller: StateTransitionController = field(init=False)
 
     def __post_init__(self) -> None:
+        self.transition_controller = StateTransitionController(self.presence_state)
         self.core_radius = self.config.core_base_radius
         self.bloom_radius = self.core_radius * self.config.glow_radius_multiplier
         self.halo_radius = self.core_radius * self.config.halo_radius_multiplier
@@ -57,7 +60,7 @@ class Scene:
 
     @property
     def profile(self) -> AnimationProfile:
-        return ANIMATION_PROFILES[self.presence_state]
+        return self.transition_controller.current_profile
 
     @property
     def is_materializing(self) -> bool:
@@ -74,6 +77,7 @@ class Scene:
         self.particles.clear()
 
     def set_state(self, state: PresenceState) -> None:
+        self.transition_controller.transition_to(state)
         if state is PresenceState.MATERIALIZING:
             self.begin_materialization()
             return

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from app.core.presence_state import PresenceState
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class AnimationProfile:
     """All visual tuning associated with one operational state."""
 
@@ -27,6 +27,9 @@ class AnimationProfile:
     outer_ring_speed_multiplier: float
     particle_radius_multiplier: float
     outward_pulse_strength: float
+    entry_core_pulse: float
+    entry_ring_boost: float
+    entry_outward_pulse: float
 
 
 def _profile(**values: float) -> AnimationProfile:
@@ -40,6 +43,8 @@ def _profile(**values: float) -> AnimationProfile:
         core_size_multiplier=1.0, glow_pulse_depth=0.08,
         outer_ring_speed_multiplier=1.0, particle_radius_multiplier=1.0,
         outward_pulse_strength=0.0,
+        entry_core_pulse=0.0, entry_ring_boost=0.0,
+        entry_outward_pulse=0.0,
     )
     defaults.update(values)
     return AnimationProfile(**defaults)
@@ -65,7 +70,7 @@ ANIMATION_PROFILES: dict[PresenceState, AnimationProfile] = {
     ),
     PresenceState.READY: _profile(
         glow_intensity=0.78, ring_intensity=0.72, pulse_strength=0.72,
-        breathing_speed=0.72, glow_pulse_depth=0.06,
+        breathing_speed=0.72, glow_pulse_depth=0.06, entry_core_pulse=2.5,
     ),
     PresenceState.LISTENING: _profile(
         rotation_speed=1.16, particle_density=0.9, pulse_strength=1.08,
@@ -74,7 +79,7 @@ ANIMATION_PROFILES: dict[PresenceState, AnimationProfile] = {
         breathing_speed=1.35, particle_opacity_multiplier=1.08,
         core_intensity=1.12, highlight_intensity=1.25,
         core_size_multiplier=1.14, glow_pulse_depth=0.24,
-        outer_ring_speed_multiplier=1.65,
+        outer_ring_speed_multiplier=1.65, entry_core_pulse=5.0,
     ),
     PresenceState.THINKING: _profile(
         rotation_speed=1.5, particle_density=0.96, pulse_strength=0.94,
@@ -84,6 +89,7 @@ ANIMATION_PROFILES: dict[PresenceState, AnimationProfile] = {
         core_intensity=1.2, highlight_intensity=1.18,
         core_size_multiplier=1.06, glow_pulse_depth=0.12,
         outer_ring_speed_multiplier=1.45, particle_radius_multiplier=0.62,
+        entry_ring_boost=0.8,
     ),
     PresenceState.RESPONDING: _profile(
         rotation_speed=1.3, particle_density=0.92, pulse_strength=1.3,
@@ -93,6 +99,7 @@ ANIMATION_PROFILES: dict[PresenceState, AnimationProfile] = {
         core_intensity=1.28, highlight_intensity=1.85,
         core_size_multiplier=1.1, glow_pulse_depth=0.2,
         outer_ring_speed_multiplier=1.25, outward_pulse_strength=1.0,
+        entry_outward_pulse=10.0,
     ),
     PresenceState.SLEEP: _profile(
         rotation_speed=0.35, particle_density=0.34, pulse_strength=0.35,

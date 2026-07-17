@@ -11,6 +11,10 @@ from app.rendering.post_effect_renderer import PostEffectRenderer
 from app.rendering.profiles import ANIMATION_PROFILES, AnimationProfile, profile_for
 from app.rendering.ring_renderer import RingRenderer
 from app.rendering.scene import Scene
+from app.rendering.state_transition import (
+    StateTransitionController,
+    TRANSITION_DURATIONS,
+)
 from app.core.presence_state import PresenceState
 
 __all__ = [
@@ -29,5 +33,7 @@ __all__ = [
     "RendererConfig",
     "RingRenderer",
     "Scene",
+    "StateTransitionController",
+    "TRANSITION_DURATIONS",
     "profile_for",
 ]

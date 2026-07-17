@@ -32,6 +32,10 @@ class MainWindow(QMainWindow):
         self.presence_status_bar = AdrienStatusBar()
         self.setStatusBar(self.presence_status_bar)
         self.state_manager.state_changed.connect(self._on_state_changed)
+        controller = self.core.scene.transition_controller
+        controller.transition_started.connect(self._on_visual_transition_started)
+        controller.transition_progress.connect(self._on_visual_transition_progress)
+        controller.transition_completed.connect(self._on_visual_transition_completed)
         self._on_state_changed(None, self.state_manager.current_state)
         self._state_shortcuts: list[QShortcut] = []
         self._install_state_shortcuts()
@@ -48,6 +52,27 @@ class MainWindow(QMainWindow):
     def _on_state_changed(self, previous_state, current_state) -> None:
         if self.DEVELOPMENT_STATE_CONTROLS:
             self.presence_status_bar.show_presence_state(current_state)
+
+    def _on_visual_transition_started(self, source_state, target_state) -> None:
+        self._show_visual_transition(0.0)
+
+    def _on_visual_transition_progress(self, progress: float) -> None:
+        self._show_visual_transition(progress)
+
+    def _on_visual_transition_completed(self, target_state) -> None:
+        if self.DEVELOPMENT_STATE_CONTROLS:
+            self.presence_status_bar.show_presence_state(target_state)
+
+    def _show_visual_transition(self, progress: float) -> None:
+        if not self.DEVELOPMENT_STATE_CONTROLS:
+            return
+        controller = self.core.scene.transition_controller
+        self.presence_status_bar.show_visual_transition(
+            self.state_manager.current_state,
+            controller.source_state,
+            controller.target_state,
+            progress,
+        )
 
     def _install_state_shortcuts(self) -> None:
         if not self.DEVELOPMENT_STATE_CONTROLS:

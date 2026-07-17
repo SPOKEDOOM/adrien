@@ -16,4 +16,11 @@ class AdrienStatusBar(QStatusBar):
         self.addPermanentWidget(self.gpu)
 
     def show_presence_state(self, state) -> None:
-        self.showMessage(f"Presence state: {state.name}")
+        self.showMessage(f"STATE: {state.name}")
+
+    def show_visual_transition(self, operational_state, source, target, progress) -> None:
+        percentage = round(progress * 100)
+        self.showMessage(
+            f"STATE: {operational_state.name}    "
+            f"VISUAL: {source.name} -> {target.name} ({percentage}%)"
+        )

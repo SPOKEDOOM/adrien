@@ -35,7 +35,8 @@ class AnimationProfileTests(unittest.TestCase):
         listening_ring_delta = scene.ring_angles[-1]
 
         self.assertGreater(listening_ring_delta, ready_ring_delta)
-        self.assertIs(scene.profile, ANIMATION_PROFILES[PresenceState.LISTENING])
+        self.assertIs(scene.profile, scene.transition_controller.current_profile)
+        self.assertTrue(scene.transition_controller.is_active)
 
 
 if __name__ == "__main__":

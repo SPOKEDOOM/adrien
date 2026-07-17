@@ -15,6 +15,7 @@ class AnimationEngine:
     def tick(self, scene: Scene, delta_seconds: float) -> None:
         bounded_delta = min(max(delta_seconds, 0.0), 0.1)
 
+        scene.transition_controller.update(bounded_delta)
         scene.elapsed_seconds += bounded_delta
         self._animate_lifecycle(scene, bounded_delta)
         self._animate_core(scene, bounded_delta)
@@ -67,6 +68,8 @@ class AnimationEngine:
         radius += breath * self.config.core_breath_amplitude
         outward_wave = max(0.0, math.sin(scene.elapsed_seconds * 4.4))
         radius += outward_wave * 12.0 * profile.outward_pulse_strength
+        radius += profile.entry_core_pulse * scene.transition_controller.entry_accent
+        radius += profile.entry_outward_pulse * scene.transition_controller.entry_accent
 
         scene.core_radius = max(0.0, radius)
         scene.core_deformation = (
@@ -85,6 +88,9 @@ class AnimationEngine:
             layer_multiplier = 1.0
             if index >= self.config.inner_ring_count:
                 layer_multiplier = profile.outer_ring_speed_multiplier
+            layer_multiplier += (
+                profile.entry_ring_boost * scene.transition_controller.entry_accent
+            )
             scene.ring_angles[index] = (
                 scene.ring_angles[index]
                 + speed
