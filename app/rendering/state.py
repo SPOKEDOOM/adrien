@@ -1,14 +1,5 @@
-from enum import Enum, auto
+"""Compatibility import; operational state belongs to app.core."""
 
+from app.core.presence_state import PresenceState
 
-class PresenceState(Enum):
-    BOOTING = auto()
-    MATERIALIZING = auto()
-    READY = auto()
-    LISTENING = auto()
-    THINKING = auto()
-    PROCESSING = auto()
-    SPEAKING = auto()
-    IDLE = auto()
-    ERROR = auto()
-    DISSOLVING = auto()
+__all__ = ["PresenceState"]

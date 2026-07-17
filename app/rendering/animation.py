@@ -4,7 +4,6 @@ import math
 
 from app.rendering.config import RendererConfig
 from app.rendering.scene import Scene
-from app.rendering.state import PresenceState
 
 
 class AnimationEngine:
@@ -32,39 +31,18 @@ class AnimationEngine:
 
             scene.visibility = eased
             scene.core_alpha = self._clamp((eased - 0.18) / 0.82, 0.0, 1.0)
-            scene.glow_intensity = self._clamp((eased - 0.08) / 0.92, 0.0, 1.0)
+            scene.glow_intensity = (
+                self._clamp((eased - 0.08) / 0.92, 0.0, 1.0)
+                * scene.profile.glow_intensity
+            )
             scene.ring_assembly = self._clamp((eased - 0.34) / 0.66, 0.0, 1.0)
 
-            if scene.materialization_progress >= 1.0:
-                scene.set_state(scene.target_state)
-                scene.visibility = 1.0
-                scene.core_alpha = 1.0
-                scene.glow_intensity = scene.profile.glow_intensity
-                scene.ring_assembly = 1.0
             return
 
-        if scene.is_dissolving:
-            progress = scene.dissolve_progress
-            progress += delta_seconds / self.config.dissolve_duration
-            scene.dissolve_progress = self._clamp(progress, 0.0, 1.0)
-            remaining = 1.0 - self._ease_in_cubic(scene.dissolve_progress)
-
-            scene.visibility = remaining
-            scene.core_alpha = remaining
-            scene.glow_intensity = remaining
-            scene.ring_assembly = remaining
-
-            if scene.dissolve_progress >= 1.0:
-                scene.set_state(PresenceState.IDLE)
-                scene.visibility = 0.36
-                scene.core_alpha = 0.36
-                scene.glow_intensity = 0.34
-                scene.ring_assembly = 0.22
-            return
-
-        target_visibility = 1.0 if scene.presence_state is not PresenceState.IDLE else 0.56
+        target_visibility = 1.0
         scene.visibility = self._approach(scene.visibility, target_visibility, delta_seconds * 1.4)
-        scene.core_alpha = self._approach(scene.core_alpha, scene.visibility, delta_seconds * 1.8)
+        target_core_alpha = min(1.0, scene.visibility * scene.profile.core_intensity)
+        scene.core_alpha = self._approach(scene.core_alpha, target_core_alpha, delta_seconds * 1.8)
         scene.glow_intensity = self._approach(
             scene.glow_intensity,
             scene.profile.glow_intensity,
@@ -80,9 +58,15 @@ class AnimationEngine:
             * self.config.core_breath_speed
             * profile.breathing_speed,
         )
-        radius = self.config.core_base_radius * scene.core_alpha
+        radius = (
+            self.config.core_base_radius
+            * scene.core_alpha
+            * profile.core_size_multiplier
+        )
         radius += pulse * self.config.core_pulse_amplitude * profile.pulse_strength
         radius += breath * self.config.core_breath_amplitude
+        outward_wave = max(0.0, math.sin(scene.elapsed_seconds * 4.4))
+        radius += outward_wave * 12.0 * profile.outward_pulse_strength
 
         scene.core_radius = max(0.0, radius)
         scene.core_deformation = (
@@ -98,9 +82,15 @@ class AnimationEngine:
         profile = scene.profile
 
         for index, speed in enumerate(self.config.ring_rotation_speeds):
+            layer_multiplier = 1.0
+            if index >= self.config.inner_ring_count:
+                layer_multiplier = profile.outer_ring_speed_multiplier
             scene.ring_angles[index] = (
                 scene.ring_angles[index]
-                + speed * profile.ring_speed_multiplier * delta_seconds
+                + speed
+                * profile.ring_speed_multiplier
+                * layer_multiplier
+                * delta_seconds
             ) % 360.0
             target_opacity = (
                 self.config.ring_opacities[index]
@@ -126,15 +116,19 @@ class AnimationEngine:
                 * delta_seconds
             )
 
-            if scene.is_materializing:
+            target_radius = (
+                particle.target_radius * scene.profile.particle_radius_multiplier
+            )
+            if (
+                scene.profile.particle_attraction_strength > 0.0
+                or scene.profile.particle_radius_multiplier != 1.0
+            ):
                 particle.orbit_radius = self._approach(
                     particle.orbit_radius,
-                    particle.target_radius,
-                    delta_seconds * 2.9,
+                    target_radius,
+                    delta_seconds
+                    * max(1.4, scene.profile.particle_attraction_strength),
                 )
-            elif scene.is_dissolving:
-                particle.orbit_radius += abs(particle.radial_velocity) * delta_seconds * 5.0
-                particle.retire()
             else:
                 particle.orbit_radius += particle.radial_velocity * delta_seconds
 
@@ -149,7 +143,9 @@ class AnimationEngine:
 
             particle.opacity = self._approach(
                 particle.opacity,
-                particle.target_opacity * scene.visibility,
+                particle.target_opacity
+                * scene.visibility
+                * scene.profile.particle_opacity_multiplier,
                 delta_seconds * particle.fade_speed,
             )
 
@@ -182,8 +178,3 @@ class AnimationEngine:
     def _ease_out_cubic(value: float) -> float:
         clamped = AnimationEngine._clamp(value, 0.0, 1.0)
         return 1.0 - pow(1.0 - clamped, 3)
-
-    @staticmethod
-    def _ease_in_cubic(value: float) -> float:
-        clamped = AnimationEngine._clamp(value, 0.0, 1.0)
-        return clamped * clamped * clamped

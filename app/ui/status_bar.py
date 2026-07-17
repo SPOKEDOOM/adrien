@@ -14,3 +14,6 @@ class AdrienStatusBar(QStatusBar):
         self.addPermanentWidget(self.cpu)
         self.addPermanentWidget(self.ram)
         self.addPermanentWidget(self.gpu)
+
+    def show_presence_state(self, state) -> None:
+        self.showMessage(f"Presence state: {state.name}")

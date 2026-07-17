@@ -30,7 +30,12 @@ class HighlightRenderer(Renderer):
     def _draw_core_spark(self, painter: QPainter, scene: Scene) -> None:
         color = self.with_alpha(
             self.config.core_inner_color,
-            int(170 * scene.visibility * scene.glow_intensity),
+            int(
+                170
+                * scene.visibility
+                * scene.glow_intensity
+                * scene.profile.highlight_intensity
+            ),
         )
         pen = QPen(color)
         pen.setWidthF(1.2)
@@ -51,7 +56,12 @@ class HighlightRenderer(Renderer):
                 continue
 
             angle = (math.tau * index) / streak_count
-            alpha = int(58 * scene.visibility * scene.glow_intensity)
+            alpha = int(
+                58
+                * scene.visibility
+                * scene.glow_intensity
+                * scene.profile.highlight_intensity
+            )
             pen = QPen(self.with_alpha(self.config.glow_color, alpha))
             pen.setWidthF(0.8)
             pen.setCapStyle(Qt.RoundCap)

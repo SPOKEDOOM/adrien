@@ -1,26 +1,6 @@
-from enum import Enum, auto
+"""Backward-compatible exports for the centralized presence state system."""
 
+from app.core.presence_state import PresenceState
+from app.core.presence_state_manager import PresenceStateManager, VALID_TRANSITIONS
 
-class AdrienState(Enum):
-    OFFLINE = auto()
-    BOOTING = auto()
-    MATERIALIZING = auto()
-    READY = auto()
-    LISTENING = auto()
-    THINKING = auto()
-    SPEAKING = auto()
-    WORKING = auto()
-    NOTIFYING = auto()
-    DISSOLVING = auto()
-
-
-class StateManager:
-
-    def __init__(self):
-        self.current_state = AdrienState.BOOTING
-
-    def change_state(self, state: AdrienState):
-        self.current_state = state
-
-    def get_state(self):
-        return self.current_state
+__all__ = ["PresenceState", "PresenceStateManager", "VALID_TRANSITIONS"]

@@ -5,14 +5,18 @@ from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import QWidget
 
 from app.rendering import AnimationEngine, CoreRenderer, RendererConfig, Scene
+from app.core.presence_state_manager import PresenceStateManager
 
 
 class AICore(QWidget):
-    def __init__(self):
+    def __init__(self, state_manager: PresenceStateManager):
         super().__init__()
 
+        self.state_manager = state_manager
         self.config = RendererConfig()
         self.scene = Scene(self.config)
+        self.scene.set_state(state_manager.current_state)
+        self.state_manager.state_changed.connect(self._on_state_changed)
         self.animation_engine = AnimationEngine(self.config)
         self.renderer = CoreRenderer(self.config)
 
@@ -24,6 +28,9 @@ class AICore(QWidget):
         self.timer.start(16)
 
         self.setMinimumSize(480, 420)
+
+    def _on_state_changed(self, previous_state, current_state) -> None:
+        self.scene.set_state(current_state)
 
     def animate(self):
         delta_seconds = self.clock.restart() / 1000.0

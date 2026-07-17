@@ -8,10 +8,10 @@ from app.rendering.highlight_renderer import HighlightRenderer
 from app.rendering.particle import Particle
 from app.rendering.particle_renderer import ParticleRenderer
 from app.rendering.post_effect_renderer import PostEffectRenderer
-from app.rendering.profiles import ANIMATION_PROFILES, AnimationProfile
+from app.rendering.profiles import ANIMATION_PROFILES, AnimationProfile, profile_for
 from app.rendering.ring_renderer import RingRenderer
 from app.rendering.scene import Scene
-from app.rendering.state import PresenceState
+from app.core.presence_state import PresenceState
 
 __all__ = [
     "ANIMATION_PROFILES",
@@ -29,4 +29,5 @@ __all__ = [
     "RendererConfig",
     "RingRenderer",
     "Scene",
+    "profile_for",
 ]

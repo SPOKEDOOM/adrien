@@ -155,4 +155,6 @@ class GlowRenderer(Renderer):
 
     @staticmethod
     def _breathing_factor(scene: Scene) -> float:
-        return 0.94 + math.sin(scene.elapsed_seconds * 1.15) * 0.06
+        speed = scene.profile.breathing_speed
+        depth = scene.profile.glow_pulse_depth
+        return (1.0 - depth) + math.sin(scene.elapsed_seconds * 1.15 * speed) * depth

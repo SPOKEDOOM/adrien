@@ -1,6 +1,6 @@
 # ADRIEN Architecture
 
-## Sprint 2 Presence Engine
+## Sprint 3 Phase 1 Presence Engine
 
 ADRIEN's Sprint 2 Presence Engine is a modular rendering pipeline for the desktop assistant's animated visual core. The architecture keeps scene state, animation, and rendering separate so Sprint 3 can add state-driven behavior without rewriting the visual layer.
 
@@ -92,4 +92,39 @@ Draws final screen-space effects such as the soft vignette, keeping post-process
 
 ## Boundaries
 
-Sprint 2 intentionally excludes voice, AI, memory, plugins, wake word behavior, materialization sequence expansion, and the Sprint 3 state machine. The current architecture is prepared for Sprint 3 by keeping state, animation, and drawing responsibilities isolated.
+Voice, AI, memory, plugins, wake word behavior, and the cinematic Sprint 4 materialization sequence remain intentionally out of scope.
+
+## Operational State Flow
+
+`PresenceState` defines the supported operational states: `BOOTING`, `MATERIALIZING`, `READY`, `LISTENING`, `THINKING`, `RESPONDING`, and `SLEEP`.
+
+`PresenceStateManager` is the sole owner of operational state. It validates requests against an explicit transition map, retains the previous state, rejects invalid or duplicate requests without raising, and emits `state_changed(previous, current)` after successful transitions. A dedicated `reset()` method provides the controlled path back to `BOOTING`.
+
+```text
+PresenceStateManager
+        -> Scene
+        -> AnimationEngine
+        -> CoreRenderer
+        -> Dedicated renderers
+```
+
+Normal transitions are:
+
+```text
+BOOTING -> MATERIALIZING -> READY
+READY -> LISTENING | SLEEP
+LISTENING -> THINKING | READY
+THINKING -> RESPONDING | READY
+RESPONDING -> READY | LISTENING
+SLEEP -> MATERIALIZING
+```
+
+Startup uses non-blocking single-shot Qt timers to request `BOOTING -> MATERIALIZING -> READY`.
+
+## State Visual Profiles
+
+Each `PresenceState` has one immutable `AnimationProfile`. Profiles centralize particle density, speed, opacity and attraction; glow and pulse tuning; ring speed and intensity; core energy; deformation; breathing; and highlight activity.
+
+`Scene.profile` exposes the active profile. `AnimationEngine` converts its values into mutable frame data on `Scene`; renderers consume scene/profile values and only draw. Neither `Scene`, `AnimationEngine`, nor a renderer validates operational transitions.
+
+Temporary development controls map keys 1-7 to the seven states. Key 1 invokes the controlled reset; all other keys use normal validated transitions. The status bar display and controls can be disabled with `MainWindow.DEVELOPMENT_STATE_CONTROLS`.
