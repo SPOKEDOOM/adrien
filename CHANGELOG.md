@@ -1,5 +1,23 @@
 # ADRIEN Changelog
 
+## Sprint 5 Phase 1
+
+- Added modular `app.voice` infrastructure: `VoiceManager`, abstract recognizer/synthesizer contracts, placeholder backends, audio preferences, and centralized voice configuration.
+- Added placeholder conversation responses for Hello, Time, Date, and a default next-stage reply.
+- Connected voice lifecycle to LISTENING, THINKING, RESPONDING, and READY without renderer coupling.
+- Added a development Voice Pipeline panel and `V` listening shortcut using safe text injection for the local placeholder recognizer.
+- Added voice lifecycle, contract, conversation, cancellation, disabled-mode, error, and state-transition tests.
+
+## Sprint 4 Phase 3
+
+- Added a deterministic, delta-time `AmbientBehaviorController` with five smoothly sequenced micro-behavior modes.
+- Added layered irregular core breathing, bounded glow variation, independent ring drift/wobble, and restrained particle energy/spread.
+- Added centralized per-state ambient strength with ambient disabled during BOOTING and MATERIALIZING.
+- Composed ambient modulation after blended profiles and materialization without per-frame profile allocation.
+- Added development controls: `A` toggle, `B` cycle mode, and `N` generate a new seed, with status diagnostics.
+- Added ADRIEN's visual product principles to `docs/Vision.md` and documented the ambient architecture.
+- Added deterministic, bounds, duration, repetition, transition, state compatibility, composition, and continuity tests.
+
 ## Sprint 4 Phase 2
 
 - Added deterministic cached quadratic curved trajectories with spiral angle offsets and three staggered arrival waves.

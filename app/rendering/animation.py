@@ -19,6 +19,7 @@ class AnimationEngine:
         scene.transition_controller.update(bounded_delta)
         if scene.is_materializing:
             scene.materialization_controller.update(bounded_delta)
+        scene.ambient_controller.update(bounded_delta, scene.presence_state)
         scene.elapsed_seconds += bounded_delta
         self._animate_lifecycle(scene, bounded_delta)
         self._animate_core(scene, bounded_delta)
@@ -74,7 +75,11 @@ class AnimationEngine:
 
     def _animate_core(self, scene: Scene, delta_seconds: float) -> None:
         profile = scene.profile
-        pulse = math.sin(scene.elapsed_seconds * self.config.core_pulse_speed)
+        ambient = scene.ambient_controller.values
+        pulse = math.sin(
+            scene.elapsed_seconds * self.config.core_pulse_speed
+            + scene.ambient_controller.values.pulse_offset
+        )
         breath = math.sin(
             scene.elapsed_seconds
             * self.config.core_breath_speed
@@ -91,6 +96,7 @@ class AnimationEngine:
         radius += outward_wave * 12.0 * profile.outward_pulse_strength
         radius += profile.entry_core_pulse * scene.transition_controller.entry_accent
         radius += profile.entry_outward_pulse * scene.transition_controller.entry_accent
+        radius *= 1.0 + ambient.core_breathing
 
         scene.core_radius = max(0.0, radius)
         scene.core_deformation = (
@@ -104,6 +110,7 @@ class AnimationEngine:
 
     def _animate_rings(self, scene: Scene, delta_seconds: float) -> None:
         profile = scene.profile
+        ambient = scene.ambient_controller
 
         for index, speed in enumerate(self.config.ring_rotation_speeds):
             layer_multiplier = 1.0
@@ -112,12 +119,18 @@ class AnimationEngine:
             layer_multiplier += (
                 profile.entry_ring_boost * scene.transition_controller.entry_accent
             )
+            micro_drift = ambient.values.ring_drift
+            micro_wobble = math.sin(
+                scene.elapsed_seconds * (0.22 + index * 0.017) + ambient.ring_phase(index)
+            ) * ambient.values.ring_wobble
             scene.ring_angles[index] = (
                 scene.ring_angles[index]
                 + speed
                 * profile.ring_speed_multiplier
                 * layer_multiplier
+                * (1.0 + micro_drift * (0.75 + index * 0.08))
                 * delta_seconds
+                + micro_wobble * delta_seconds
             ) % 360.0
             target_opacity = (
                 self.config.ring_opacities[index]
@@ -155,10 +168,12 @@ class AnimationEngine:
             particle.angle_degrees += (
                 (particle.angular_velocity + organic_wobble * 4.5)
                 * scene.profile.particle_speed_multiplier
+                * (1.0 + scene.ambient_controller.values.particle_energy)
                 * delta_seconds
             )
 
             radius_multiplier = scene.profile.particle_radius_multiplier
+            radius_multiplier *= 1.0 + scene.ambient_controller.values.particle_spread
             attraction_strength = scene.profile.particle_attraction_strength
             if scene.is_materializing:
                 controller = scene.materialization_controller

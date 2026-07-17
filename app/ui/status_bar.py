@@ -31,3 +31,9 @@ class AdrienStatusBar(QStatusBar):
             f"STATE: MATERIALIZING    MATERIALIZATION: {round(progress * 100)}%    "
             f"PHASE: {phase.name}    PARTICLES: {active_particles}{seed_text}"
         )
+
+    def show_ambient(self, state, enabled, mode, seed) -> None:
+        self.showMessage(
+            f"STATE: {state.name}    AMBIENT: {'ON' if enabled else 'OFF'}    "
+            f"MODE: {mode.name}    SEED: {seed}"
+        )

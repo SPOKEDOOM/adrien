@@ -35,6 +35,7 @@ class HighlightRenderer(Renderer):
                 * scene.visibility
                 * scene.glow_intensity
                 * scene.profile.highlight_intensity
+                * (1.0 + scene.ambient_controller.values.highlight_variation)
             ),
         )
         pen = QPen(color)
@@ -61,6 +62,7 @@ class HighlightRenderer(Renderer):
                 * scene.visibility
                 * scene.glow_intensity
                 * scene.profile.highlight_intensity
+                * (1.0 + scene.ambient_controller.values.highlight_variation)
             )
             pen = QPen(self.with_alpha(self.config.glow_color, alpha))
             pen.setWidthF(0.8)

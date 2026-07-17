@@ -9,6 +9,7 @@ from app.rendering.profiles import AnimationProfile
 from app.rendering.state_transition import StateTransitionController
 from app.rendering.materialization_controller import MaterializationController
 from app.core.presence_state import PresenceState
+from app.rendering.ambient_behavior import AmbientBehaviorController
 
 
 @dataclass(slots=True)
@@ -41,10 +42,12 @@ class Scene:
     active_materialization_seed: int | None = None
     energy_wave_progress: float = 0.0
     energy_wave_triggered: bool = False
+    ambient_controller: AmbientBehaviorController = field(init=False)
 
     def __post_init__(self) -> None:
         self.transition_controller = StateTransitionController(self.presence_state)
         self.materialization_controller = MaterializationController()
+        self.ambient_controller = AmbientBehaviorController()
         self.core_radius = self.config.core_base_radius
         self.bloom_radius = self.core_radius * self.config.glow_radius_multiplier
         self.halo_radius = self.core_radius * self.config.halo_radius_multiplier

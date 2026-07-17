@@ -194,3 +194,49 @@ Core formation begins compressed and faint, grows progressively, and receives a 
 When development controls are enabled, `M` requests a replay only from `READY` or `SLEEP` through `PresenceStateManager`; numeric key `2` remains unchanged. `MainWindow.MATERIALIZATION_DEBUG_SEED` defaults to `42` for repeatable development paths. Set the scene seed to `None` for a randomly selected production run seed. The status bar reports phase, percentage, active particle count, and the active seed.
 
 Performance remains bounded by the existing particle count. Path, layer, delay, duration, and easing variation are cached once per sequence; trails use exactly two scalar position pairs; colors remain cached; no real blur, position-history collection, extra timer, blocking loop, or per-frame randomness is introduced.
+
+## Sprint 4 Phase 3: Ambient Living Presence
+
+`AmbientBehaviorController` is a non-rendering, delta-time controller owned by `Scene`. It exposes one reusable `AmbientValues` instance containing bounded modulation for core breathing, glow, ring drift/wobble, particle energy/spread, highlights, and pulse phase. Seeded randomness is used only when selecting modes, durations, phases, or a new development seed; frame updates use layered low-frequency oscillation and allocate no profiles.
+
+Ambient modes are visual micro-behaviors rather than operational states:
+
+| Mode | Duration | Character |
+| --- | ---: | --- |
+| `CALM` | 8-16 s | Balanced, minimal variation. |
+| `BREATHING` | 6-12 s | Slightly fuller core and glow breathing. |
+| `ENERGY_DRIFT` | 7-14 s | Gentle particle energy and spread movement. |
+| `RING_RESONANCE` | 5-10 s | Emphasizes microscopic independent ring motion. |
+| `DEEP_IDLE` | 10-20 s | Slowest and quietest variation. |
+
+Selection excludes the current mode and uses seeded weighted randomness. Mode amplitudes crossfade over 2.4 seconds. Different low frequencies and cached per-ring phases prevent an obvious short loop.
+
+Composition order is:
+
+```text
+Base state profile
+    -> StateTransitionController blended profile
+    -> materialization lifecycle values
+    -> AmbientBehaviorController bounded modulation
+    -> AnimationEngine mutable scene values
+    -> state-agnostic renderers
+```
+
+State compatibility is centralized in `STATE_AMBIENT_STRENGTH`: READY `1.0`, SLEEP `0.42`, LISTENING `0.35`, THINKING `0.22`, RESPONDING `0.10`, and BOOTING/MATERIALIZING `0.0`. This keeps operational-state checks out of renderers. Zero-strength lifecycle states are applied immediately; other strength changes ease smoothly.
+
+Development controls are available only when `MainWindow.DEVELOPMENT_STATE_CONTROLS` is enabled: `A` toggles ambient behavior, `B` cycles modes, and `N` selects a new reproducible seed. The status bar shows enabled state, current mode, and seed. Existing numeric controls and materialization replay remain unchanged.
+
+## Sprint 5 Phase 1: Voice Pipeline Foundation
+
+The voice layer is intentionally backend-neutral and has no renderer or UI responsibilities:
+
+```text
+Microphone -> SpeechRecognizer -> VoiceManager placeholder conversation
+           -> SpeechSynthesizer -> Audio output
+```
+
+`VoiceManager` coordinates recognition, placeholder reply generation, synthesis, cancellation, errors, and operational-state requests. `SpeechRecognizer` and `SpeechSynthesizer` are abstract Qt-signal contracts, with local placeholder implementations used by default. Future Whisper, Vosk, cloud STT, Piper, or other TTS backends can replace only the relevant implementation.
+
+The placeholder recognizer intentionally uses `submit_text()` rather than accessing a microphone. This keeps the foundation deterministic, platform-neutral, and testable while real audio capture is deferred. The placeholder conversation replies to `Hello`, `Time`, and `Date`; all other input gets a fixed next-stage reply. `AudioController` owns device names, clamped volume, mute, and future device-selection settings without opening platform audio devices.
+
+Voice stages request `LISTENING`, `THINKING`, `RESPONDING`, then `READY`; cancellation and errors return to `READY`. The development Voice Pipeline panel shows listening, recognized text, reply, speech state, microphone, and speaker. With development controls enabled, press `V` to listen and submit placeholder text in the panel.

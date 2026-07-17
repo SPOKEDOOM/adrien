@@ -21,9 +21,16 @@ from app.rendering.state_transition import (
     TRANSITION_DURATIONS,
 )
 from app.core.presence_state import PresenceState
+from app.rendering.ambient_behavior import (
+    AmbientBehaviorController, AmbientConfig, AmbientMode, AmbientValues,
+)
 
 __all__ = [
     "ANIMATION_PROFILES",
+    "AmbientBehaviorController",
+    "AmbientConfig",
+    "AmbientMode",
+    "AmbientValues",
     "AnimationEngine",
     "AnimationProfile",
     "BackgroundRenderer",

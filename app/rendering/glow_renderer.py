@@ -22,6 +22,7 @@ class GlowRenderer(Renderer):
 
         center = QPointF(scene.center_x, scene.center_y)
         glow_intensity = scene.glow_intensity * self._breathing_factor(scene)
+        glow_intensity *= 1.0 + scene.ambient_controller.values.glow_variation
         painter.save()
         painter.setPen(Qt.NoPen)
         self._draw_soft_ambient_glow(painter, scene, center, glow_intensity)
