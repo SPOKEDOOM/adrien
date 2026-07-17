@@ -1,5 +1,15 @@
 # ADRIEN Changelog
 
+## Sprint 4 Phase 1
+
+- Added the frame-driven `MaterializationController` and four configurable phases.
+- Added lightweight particle scattering, varied curved convergence, and orbital settling.
+- Added progressive core/glow formation and staggered partial ring reveal.
+- Replaced the fixed startup READY timer with controller completion through `PresenceStateManager`.
+- Added clean materialization cancellation that preserves current visual values.
+- Added status-bar materialization percentage and phase diagnostics.
+- Added lifecycle, boundary, cancellation, interruption, clamping, and READY-contract tests.
+
 ## Sprint 3 Phase 2
 
 - Added `StateTransitionController` with delta-time profile interpolation.

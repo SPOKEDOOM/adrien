@@ -6,6 +6,7 @@ from PySide6.QtWidgets import QWidget
 
 from app.rendering import AnimationEngine, CoreRenderer, RendererConfig, Scene
 from app.core.presence_state_manager import PresenceStateManager
+from app.core.presence_state import PresenceState
 
 
 class AICore(QWidget):
@@ -17,6 +18,9 @@ class AICore(QWidget):
         self.scene = Scene(self.config)
         self.scene.set_state(state_manager.current_state)
         self.state_manager.state_changed.connect(self._on_state_changed)
+        self.scene.materialization_controller.completed.connect(
+            self._on_materialization_completed
+        )
         self.animation_engine = AnimationEngine(self.config)
         self.renderer = CoreRenderer(self.config)
 
@@ -31,6 +35,9 @@ class AICore(QWidget):
 
     def _on_state_changed(self, previous_state, current_state) -> None:
         self.scene.set_state(current_state)
+
+    def _on_materialization_completed(self) -> None:
+        self.state_manager.transition_to(PresenceState.READY)
 
     def animate(self):
         delta_seconds = self.clock.restart() / 1000.0

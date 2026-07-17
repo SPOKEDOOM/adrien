@@ -11,6 +11,11 @@ from app.rendering.post_effect_renderer import PostEffectRenderer
 from app.rendering.profiles import ANIMATION_PROFILES, AnimationProfile, profile_for
 from app.rendering.ring_renderer import RingRenderer
 from app.rendering.scene import Scene
+from app.rendering.materialization_controller import (
+    MaterializationController,
+    MaterializationPhase,
+    PHASE_DURATIONS,
+)
 from app.rendering.state_transition import (
     StateTransitionController,
     TRANSITION_DURATIONS,
@@ -26,6 +31,9 @@ __all__ = [
     "EnergyCoreRenderer",
     "GlowRenderer",
     "HighlightRenderer",
+    "MaterializationController",
+    "MaterializationPhase",
+    "PHASE_DURATIONS",
     "Particle",
     "ParticleRenderer",
     "PostEffectRenderer",

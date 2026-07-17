@@ -163,3 +163,22 @@ Unlisted development transitions use a centralized 0.7-second fallback. Smoothst
 Profile-driven entry accent values provide a soft core expansion for LISTENING, brief ring acceleration for THINKING, an outward pulse for RESPONDING, and stabilization for READY. No renderer checks operational states.
 
 When `MainWindow.DEVELOPMENT_STATE_CONTROLS` is enabled, the status bar shows operational state, visual source and target, and percentage progress. Keys 1-7 remain window-scoped visual test controls. Disable that flag to remove both the shortcuts and transition display.
+
+## Sprint 4 Phase 1: Materialization Prototype
+
+`MaterializationController` is a frame-rate-independent lifecycle controller for the lightweight assembly sequence. It owns progress, phase, phase-local progress, activation, cancellation, and completion. It contains no renderer-specific code.
+
+The 3.2-second sequence is divided into:
+
+| Phase | Duration | Visual responsibility |
+| --- | ---: | --- |
+| FADE_IN | 0.45 s | Reveal faint scattered particles while the core remains dark. |
+| CONVERGENCE | 1.15 s | Pull particles inward at varied rates and begin the glow. |
+| CORE_FORMATION | 0.9 s | Form the core and reveal staggered partial ring arcs. |
+| STABILIZATION | 0.7 s | Settle particles into normal orbits and complete the rings. |
+
+Entering `MATERIALIZING` starts the controller. Existing particles are reused and scattered outward once; newly required particles use the existing materialization spawn path. `AnimationEngine` reads controller progress once per frame and converts it into core opacity and scale, glow intensity and radius, particle target radius, and staggered ring reveal values. Ring rendering remains state-agnostic and only draws the reveal value exposed by `Scene`.
+
+The controller's `completed` signal is handled by `AICore`, which requests `READY` through `PresenceStateManager`. There is no fixed READY timer. Leaving `MATERIALIZING` early cancels the controller without resetting current visibility, core, glow, particle, or blended-profile values.
+
+Development key 2 restarts materialization when selected from another state. While active, the status bar displays total percentage and current phase. The prototype retains the existing bounded particle population and performs no per-frame collection rebuild, per-pixel processing, or blocking work.

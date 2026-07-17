@@ -7,6 +7,7 @@ from app.rendering.config import RendererConfig
 from app.rendering.particle import Particle
 from app.rendering.profiles import AnimationProfile
 from app.rendering.state_transition import StateTransitionController
+from app.rendering.materialization_controller import MaterializationController
 from app.core.presence_state import PresenceState
 
 
@@ -20,7 +21,6 @@ class Scene:
     elapsed_seconds: float = 0.0
     presence_state: PresenceState = PresenceState.BOOTING
     visibility: float = 0.35
-    materialization_progress: float = 0.0
     dissolve_progress: float = 0.0
     core_radius: float = 0.0
     core_alpha: float = 0.0
@@ -32,17 +32,21 @@ class Scene:
     ring_assembly: float = 0.0
     ring_angles: list[float] = field(default_factory=list)
     ring_opacities: list[float] = field(default_factory=list)
+    ring_reveals: list[float] = field(default_factory=list)
     particles: list[Particle] = field(default_factory=list)
     rng: random.Random = field(default_factory=random.Random)
     transition_controller: StateTransitionController = field(init=False)
+    materialization_controller: MaterializationController = field(init=False)
 
     def __post_init__(self) -> None:
         self.transition_controller = StateTransitionController(self.presence_state)
+        self.materialization_controller = MaterializationController()
         self.core_radius = self.config.core_base_radius
         self.bloom_radius = self.core_radius * self.config.glow_radius_multiplier
         self.halo_radius = self.core_radius * self.config.halo_radius_multiplier
         self.ring_angles = [0.0 for _ in self.config.ring_offsets]
         self.ring_opacities = [0.0 for _ in self.config.ring_offsets]
+        self.ring_reveals = [1.0 for _ in self.config.ring_offsets]
         self.core_alpha = self.visibility
         self.glow_intensity = self.profile.glow_intensity
 
@@ -66,21 +70,30 @@ class Scene:
     def is_materializing(self) -> bool:
         return self.presence_state is PresenceState.MATERIALIZING
 
+    @property
+    def materialization_progress(self) -> float:
+        return self.materialization_controller.progress
+
     def begin_materialization(self) -> None:
         self.presence_state = PresenceState.MATERIALIZING
         self.visibility = 0.0
-        self.materialization_progress = 0.0
         self.dissolve_progress = 0.0
         self.core_alpha = 0.0
         self.glow_intensity = 0.0
         self.ring_assembly = 0.0
-        self.particles.clear()
+        self.ring_reveals = [0.0 for _ in self.config.ring_offsets]
+        for particle in self.particles:
+            scatter = self.rng.uniform(1.2, 1.65)
+            particle.orbit_radius = max(particle.orbit_radius, particle.target_radius * scatter)
+        self.materialization_controller.start()
 
     def set_state(self, state: PresenceState) -> None:
         self.transition_controller.transition_to(state)
         if state is PresenceState.MATERIALIZING:
             self.begin_materialization()
             return
+        if self.materialization_controller.is_active:
+            self.materialization_controller.cancel()
         self.presence_state = state
         if state is PresenceState.BOOTING:
             self.visibility = min(self.visibility, 0.35)

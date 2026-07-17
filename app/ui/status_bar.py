@@ -24,3 +24,9 @@ class AdrienStatusBar(QStatusBar):
             f"STATE: {operational_state.name}    "
             f"VISUAL: {source.name} -> {target.name} ({percentage}%)"
         )
+
+    def show_materialization(self, progress, phase) -> None:
+        self.showMessage(
+            f"STATE: MATERIALIZING    MATERIALIZATION: {round(progress * 100)}%    "
+            f"PHASE: {phase.name}"
+        )

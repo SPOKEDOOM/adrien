@@ -36,18 +36,16 @@ class MainWindow(QMainWindow):
         controller.transition_started.connect(self._on_visual_transition_started)
         controller.transition_progress.connect(self._on_visual_transition_progress)
         controller.transition_completed.connect(self._on_visual_transition_completed)
+        materialization = self.core.scene.materialization_controller
+        materialization.progress_changed.connect(self._on_materialization_progress)
         self._on_state_changed(None, self.state_manager.current_state)
         self._state_shortcuts: list[QShortcut] = []
         self._install_state_shortcuts()
 
         QTimer.singleShot(500, self._begin_materialization)
-        QTimer.singleShot(3700, self._become_ready)
 
     def _begin_materialization(self) -> None:
         self.state_manager.transition_to(PresenceState.MATERIALIZING)
-
-    def _become_ready(self) -> None:
-        self.state_manager.transition_to(PresenceState.READY)
 
     def _on_state_changed(self, previous_state, current_state) -> None:
         if self.DEVELOPMENT_STATE_CONTROLS:
@@ -73,6 +71,10 @@ class MainWindow(QMainWindow):
             controller.target_state,
             progress,
         )
+
+    def _on_materialization_progress(self, progress, phase) -> None:
+        if self.DEVELOPMENT_STATE_CONTROLS:
+            self.presence_status_bar.show_materialization(progress, phase)
 
     def _install_state_shortcuts(self) -> None:
         if not self.DEVELOPMENT_STATE_CONTROLS:

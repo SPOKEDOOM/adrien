@@ -50,5 +50,4 @@ class RendererConfig:
     ring_opacities: tuple[float, ...] = (0.92, 0.72, 0.62, 0.44, 0.32)
     inner_ring_count: int = 3
 
-    materialization_duration: float = 3.2
     dissolve_duration: float = 2.4

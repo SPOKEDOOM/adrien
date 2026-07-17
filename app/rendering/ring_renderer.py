@@ -69,7 +69,8 @@ class RingRenderer(Renderer):
 
         radius = scene.core_radius + offset
         angle = self._layered_angle(scene, index)
-        arc_span = self.config.ring_arc_spans[index]
+        reveal = scene.ring_reveals[index]
+        arc_span = max(1, int(self.config.ring_arc_spans[index] * reveal))
         pen = QPen(self._base_pens[index])
         color = pen.color()
         color.setAlpha(int(255 * min(1.0, scene.ring_opacities[index])))
@@ -82,7 +83,11 @@ class RingRenderer(Renderer):
         bounds = QRectF(-radius, -radius, radius * 2.0, radius * 2.0)
         painter.drawArc(bounds, 0, arc_span * 16)
 
-        painter.drawArc(bounds, 190 * 16, self._accent_spans[index] * 16)
+        painter.drawArc(
+            bounds,
+            190 * 16,
+            max(1, int(self._accent_spans[index] * reveal)) * 16,
+        )
         self._draw_segments(painter, bounds, arc_span, index)
 
         painter.restore()

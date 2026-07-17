@@ -4,6 +4,7 @@ import math
 
 from app.rendering.config import RendererConfig
 from app.rendering.scene import Scene
+from app.rendering.materialization_controller import MaterializationPhase
 
 
 class AnimationEngine:
@@ -16,6 +17,8 @@ class AnimationEngine:
         bounded_delta = min(max(delta_seconds, 0.0), 0.1)
 
         scene.transition_controller.update(bounded_delta)
+        if scene.is_materializing:
+            scene.materialization_controller.update(bounded_delta)
         scene.elapsed_seconds += bounded_delta
         self._animate_lifecycle(scene, bounded_delta)
         self._animate_core(scene, bounded_delta)
@@ -25,19 +28,32 @@ class AnimationEngine:
 
     def _animate_lifecycle(self, scene: Scene, delta_seconds: float) -> None:
         if scene.is_materializing:
-            progress = scene.materialization_progress
-            progress += delta_seconds / self.config.materialization_duration
-            scene.materialization_progress = self._clamp(progress, 0.0, 1.0)
-            eased = self._ease_out_cubic(scene.materialization_progress)
+            controller = scene.materialization_controller
+            phase_progress = self._ease_out_cubic(controller.phase_progress)
+            scene.visibility = self._ease_out_cubic(controller.progress)
 
-            scene.visibility = eased
-            scene.core_alpha = self._clamp((eased - 0.18) / 0.82, 0.0, 1.0)
-            scene.glow_intensity = (
-                self._clamp((eased - 0.08) / 0.92, 0.0, 1.0)
-                * scene.profile.glow_intensity
-            )
-            scene.ring_assembly = self._clamp((eased - 0.34) / 0.66, 0.0, 1.0)
-
+            if controller.phase is MaterializationPhase.FADE_IN:
+                scene.core_alpha = 0.0
+                scene.glow_intensity = 0.08 * phase_progress
+                scene.ring_assembly = 0.0
+            elif controller.phase is MaterializationPhase.CONVERGENCE:
+                scene.core_alpha = 0.08 * phase_progress
+                scene.glow_intensity = scene.profile.glow_intensity * (
+                    0.12 + 0.34 * phase_progress
+                )
+                scene.ring_assembly = 0.0
+            elif controller.phase is MaterializationPhase.CORE_FORMATION:
+                scene.core_alpha = 0.08 + 0.92 * phase_progress
+                scene.glow_intensity = scene.profile.glow_intensity * (
+                    0.46 + 0.44 * phase_progress
+                )
+                scene.ring_assembly = phase_progress
+            else:
+                scene.core_alpha = 1.0
+                scene.glow_intensity = scene.profile.glow_intensity * (
+                    0.9 + 0.1 * phase_progress
+                )
+                scene.ring_assembly = 1.0
             return
 
         target_visibility = 1.0
@@ -109,6 +125,18 @@ class AnimationEngine:
                 target_opacity,
                 delta_seconds * 2.6,
             )
+            if scene.is_materializing:
+                stagger = index * 0.09
+                reveal = self._clamp(
+                    (scene.ring_assembly - stagger) / max(0.1, 1.0 - stagger),
+                    0.0,
+                    1.0,
+                )
+                scene.ring_reveals[index] = self._ease_out_cubic(reveal)
+            else:
+                scene.ring_reveals[index] = self._approach(
+                    scene.ring_reveals[index], 1.0, delta_seconds * 2.2
+                )
 
     def _animate_particles(self, scene: Scene, delta_seconds: float) -> None:
         for particle in scene.particles:
@@ -122,18 +150,32 @@ class AnimationEngine:
                 * delta_seconds
             )
 
-            target_radius = (
-                particle.target_radius * scene.profile.particle_radius_multiplier
-            )
+            radius_multiplier = scene.profile.particle_radius_multiplier
+            attraction_strength = scene.profile.particle_attraction_strength
+            if scene.is_materializing:
+                controller = scene.materialization_controller
+                phase_progress = controller.phase_progress
+                if controller.phase is MaterializationPhase.FADE_IN:
+                    radius_multiplier = 1.35
+                    attraction_strength = 0.25
+                elif controller.phase is MaterializationPhase.CONVERGENCE:
+                    radius_multiplier = 1.35 - 0.82 * phase_progress
+                    attraction_strength = 1.5 + particle.depth * 1.7
+                elif controller.phase is MaterializationPhase.CORE_FORMATION:
+                    radius_multiplier = 0.53 + 0.19 * phase_progress
+                    attraction_strength = 2.0 + (particle.phase % 1.2)
+                else:
+                    radius_multiplier = 0.72 + 0.28 * phase_progress
+                    attraction_strength = 2.2
+            target_radius = particle.target_radius * radius_multiplier
             if (
-                scene.profile.particle_attraction_strength > 0.0
-                or scene.profile.particle_radius_multiplier != 1.0
+                attraction_strength > 0.0
+                or radius_multiplier != 1.0
             ):
                 particle.orbit_radius = self._approach(
                     particle.orbit_radius,
                     target_radius,
-                    delta_seconds
-                    * max(1.4, scene.profile.particle_attraction_strength),
+                    delta_seconds * max(0.2, attraction_strength),
                 )
             else:
                 particle.orbit_radius += particle.radial_velocity * delta_seconds
