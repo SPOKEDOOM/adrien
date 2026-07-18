@@ -1,5 +1,17 @@
 # ADRIEN Changelog
 
+## Sprint 5 Phase 3
+
+- Refactored all technical controls into one hidden, scrollable Developer Tools dock.
+- Restored a clean central layout and added a subtle state indicator with short text.
+- Made the development fallback explicit, disabled acknowledgement by default, and
+  kept simulated sleep audio IDLE until command capture begins.
+- Added modular wake backend, detector, manager, configuration, and audio ring buffer.
+- Added confidence thresholding, phrase normalization, cooldown, duplicate suppression,
+  state gating, acknowledgement, command timeout, and return-to-sleep behavior.
+- Added explicit audio ownership modes and a dependency-free development fallback.
+- Added Wake Engine debug controls, diagnostics, lifecycle tests, and safe shutdown.
+
 ## Sprint 5 Phase 2
 
 - Fixed real microphone completion diagnostics, practical RMS thresholding, silence

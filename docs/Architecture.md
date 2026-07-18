@@ -260,3 +260,34 @@ used. Capture stops before `RESPONDING`, and listening never restarts automatica
 Optional imports are lazy, the typed path remains available, and the panel reports
 actual backends. Devices are enumerated at runtime. Window shutdown cancels work and
 performs bounded joins. Raw audio stays in memory and is discarded after use.
+
+## Sprint 5 Phase 3: Wake Engine
+
+`WakeManager` coordinates wake lifecycle and operational state. `WakeDetector`
+normalizes backend results into phrase, clamped confidence, UTC timestamp, and backend
+name. `WakeBackend` is replaceable; the default development backend supports safe
+confidence injection and owns no microphone stream. `AudioRingBuffer` supplies a
+thread-safe bounded window for a future production backend.
+
+```text
+SLEEP / WAKE_MONITORING -> MATERIALIZING -> READY
+    -> optional TTS_PLAYBACK acknowledgement -> COMMAND_LISTENING
+    -> THINKING -> RESPONDING -> READY -> SLEEP / WAKE_MONITORING
+```
+
+`AudioController.AudioMode` is the ownership contract: `IDLE`, `WAKE_MONITORING`,
+`COMMAND_LISTENING`, or `TTS_PLAYBACK`. Monitoring pauses before animation and cannot
+overlap capture or output. Only SLEEP permits monitoring by default. A 0.75 threshold,
+two-second cooldown, normalized exact aliases, and in-progress guard prevent duplicate
+or unrelated activation. Command capture times out after eight seconds; successful
+responses remain READY for one second before sleep.
+
+All delays use parented single-shot Qt timers. Shutdown stops monitoring, cancels
+timers and voice work, and stops backend workers. Production backend failure switches
+to the development fallback without preventing application startup.
+
+The development backend is the explicit default and owns no audio stream while
+sleeping, so its monitoring state leaves `AudioMode.IDLE`. A hidden, width-bounded
+Developer Tools dock contains wake/voice controls and diagnostics. The normal status
+bar exposes only a themed state indicator and short text. Spoken acknowledgement is
+disabled by default; after wake materialization command capture starts directly.

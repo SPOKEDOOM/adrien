@@ -6,7 +6,7 @@ from PySide6.QtCore import QObject, Signal
 
 from app.core.presence_state import PresenceState
 from app.core.presence_state_manager import PresenceStateManager
-from app.voice.audio_controller import AudioController
+from app.voice.audio_controller import AudioController, AudioMode
 from app.voice.speech_recognizer import PlaceholderSpeechRecognizer, SpeechRecognizer
 from app.voice.speech_synthesizer import PlaceholderSpeechSynthesizer, SpeechSynthesizer
 from app.voice.microphone_recognizer import MicrophoneSpeechRecognizer
@@ -84,6 +84,7 @@ class VoiceManager(QObject):
         print("Voice listening requested", flush=True)
         if not self.state_manager.transition_to(PresenceState.LISTENING):
             return False
+        self.audio_controller.set_mode(AudioMode.COMMAND_LISTENING)
         self.listening_changed.emit(True)
         self.status_changed.emit("listening")
         self.recognizer.start()
@@ -123,6 +124,7 @@ class VoiceManager(QObject):
         self.synthesizer.stop()
         self.listening_changed.emit(False)
         self.speaking_changed.emit(False)
+        self.audio_controller.set_mode(AudioMode.IDLE)
         self._return_ready()
 
     @staticmethod
@@ -140,6 +142,7 @@ class VoiceManager(QObject):
     def _on_recognized(self, text: str) -> None:
         print(f"VoiceManager received recognized: {text}", flush=True)
         self.listening_changed.emit(False)
+        self.audio_controller.set_mode(AudioMode.IDLE)
         self.recognized_text.emit(text)
         if (self.state_manager.current_state is PresenceState.LISTENING and
                 not self.state_manager.transition_to(PresenceState.THINKING)):
@@ -155,6 +158,7 @@ class VoiceManager(QObject):
             self._return_ready()
             return
         if self.state_manager.transition_to(PresenceState.RESPONDING):
+            self.audio_controller.set_mode(AudioMode.TTS_PLAYBACK)
             self.speaking_changed.emit(True)
             self.synthesizer.speak(reply)
 
@@ -167,6 +171,7 @@ class VoiceManager(QObject):
     def _on_finished(self) -> None:
         print("TTS completed", flush=True)
         self.speaking_changed.emit(False)
+        self.audio_controller.set_mode(AudioMode.IDLE)
         self._return_ready()
 
     def _on_speaking_started(self) -> None:

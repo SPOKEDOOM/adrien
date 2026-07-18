@@ -1,22 +1,51 @@
-from PySide6.QtWidgets import QLabel, QStatusBar
+from PySide6.QtWidgets import QLabel, QPushButton, QStatusBar
 
 
 class AdrienStatusBar(QStatusBar):
     def __init__(self):
         super().__init__()
 
-        self.showMessage("ADRIEN is booting...")
+        self.showMessage("Booting")
+
+        self.indicator = QLabel("●")
+        self.indicator.setToolTip("ADRIEN status")
+        self.gear_button = QPushButton("⚙")
+        self.gear_button.setFlat(True)
+        self.gear_button.setFixedSize(26, 22)
 
         self.cpu = QLabel("CPU: --%")
         self.ram = QLabel("RAM: --%")
         self.gpu = QLabel("GPU: --%")
 
-        self.addPermanentWidget(self.cpu)
-        self.addPermanentWidget(self.ram)
-        self.addPermanentWidget(self.gpu)
+        self.cpu.hide()
+        self.ram.hide()
+        self.gpu.hide()
+        self.addPermanentWidget(self.indicator)
+        self.addPermanentWidget(self.gear_button)
+        self._set_indicator("#68717d")
+
+    def _set_indicator(self, color: str) -> None:
+        self.indicator.setStyleSheet(f"color: {color}; font-size: 16px;")
 
     def show_presence_state(self, state) -> None:
-        self.showMessage(f"STATE: {state.name}")
+        names = {
+            "BOOTING": "Booting", "MATERIALIZING": "Waking",
+            "READY": "Ready", "SLEEP": "Sleeping", "LISTENING": "Listening...",
+            "THINKING": "Thinking", "RESPONDING": "Speaking",
+        }
+        colors = {
+            "BOOTING": "#68717d", "MATERIALIZING": "#70d7ff", "READY": "#66b7c9",
+            "SLEEP": "#68717d", "LISTENING": "#9af5ff", "THINKING": "#65ccea",
+            "RESPONDING": "#d0fbff",
+        }
+        self.indicator.setText("●")
+        self.showMessage(names.get(state.name, state.name.title()))
+        self._set_indicator(colors.get(state.name, "#68717d"))
+
+    def show_error(self, message: str) -> None:
+        self.showMessage(message)
+        self.indicator.setText("⚠")
+        self._set_indicator("#ffb45f")
 
     def show_visual_transition(self, operational_state, source, target, progress) -> None:
         percentage = round(progress * 100)

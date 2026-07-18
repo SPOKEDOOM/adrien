@@ -1,12 +1,13 @@
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QKeySequence, QShortcut
-from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QWidget
+from PySide6.QtWidgets import QDockWidget, QHBoxLayout, QMainWindow, QWidget
 from app.core import PresenceState, PresenceStateManager
 from app.ui.ai_core import AICore
 from app.ui.sidebar import Sidebar
 from app.ui.status_bar import AdrienStatusBar
-from app.ui.voice_debug_panel import VoiceDebugPanel
+from app.ui.developer_tools_panel import DeveloperToolsPanel
 from app.voice import VoiceManager
+from app.wake import WakeManager
 
 
 class MainWindow(QMainWindow):
@@ -26,20 +27,35 @@ class MainWindow(QMainWindow):
         self.sidebar = Sidebar()
         self.state_manager = PresenceStateManager(parent=self)
         self.voice_manager = VoiceManager(self.state_manager)
+        self.wake_manager = WakeManager(
+            self.state_manager, self.voice_manager, self.voice_manager.audio_controller
+        )
         self.core = AICore(self.state_manager)
         if self.DEVELOPMENT_STATE_CONTROLS:
             self.core.scene.materialization_seed = self.MATERIALIZATION_DEBUG_SEED
 
         layout.addWidget(self.sidebar)
         layout.addWidget(self.core, 1)
-        self.voice_debug_panel = VoiceDebugPanel(self.voice_manager)
-        self.voice_debug_panel.setVisible(self.DEVELOPMENT_STATE_CONTROLS)
-        layout.addWidget(self.voice_debug_panel)
-
         self.setCentralWidget(container)
+
+        self.developer_tools_panel = DeveloperToolsPanel(
+            self.wake_manager, self.voice_manager
+        )
+        self.developer_dock = QDockWidget("Developer Tools", self)
+        self.developer_dock.setObjectName("developer_tools")
+        self.developer_dock.setAllowedAreas(Qt.RightDockWidgetArea)
+        self.developer_dock.setFeatures(QDockWidget.DockWidgetClosable)
+        self.developer_dock.setWidget(self.developer_tools_panel)
+        self.developer_dock.setMinimumWidth(320)
+        self.developer_dock.setMaximumWidth(380)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.developer_dock)
+        self.developer_dock.hide()
 
         self.presence_status_bar = AdrienStatusBar()
         self.setStatusBar(self.presence_status_bar)
+        self.presence_status_bar.gear_button.clicked.connect(self.toggle_developer_tools)
+        self.voice_manager.error.connect(self.presence_status_bar.show_error)
+        self.wake_manager.error.connect(self.presence_status_bar.show_error)
         self.state_manager.state_changed.connect(self._on_state_changed)
         controller = self.core.scene.transition_controller
         controller.transition_started.connect(self._on_visual_transition_started)
@@ -52,23 +68,22 @@ class MainWindow(QMainWindow):
         self._install_state_shortcuts()
 
         QTimer.singleShot(500, self._begin_materialization)
+        self.wake_manager.start()
 
     def _begin_materialization(self) -> None:
         self.state_manager.transition_to(PresenceState.MATERIALIZING)
 
     def _on_state_changed(self, previous_state, current_state) -> None:
-        if self.DEVELOPMENT_STATE_CONTROLS:
-            self._show_ambient_status(current_state)
+        self.presence_status_bar.show_presence_state(current_state)
 
     def _on_visual_transition_started(self, source_state, target_state) -> None:
-        self._show_visual_transition(0.0)
+        pass
 
     def _on_visual_transition_progress(self, progress: float) -> None:
-        self._show_visual_transition(progress)
+        pass
 
     def _on_visual_transition_completed(self, target_state) -> None:
-        if self.DEVELOPMENT_STATE_CONTROLS:
-            self.presence_status_bar.show_presence_state(target_state)
+        self.presence_status_bar.show_presence_state(target_state)
 
     def _show_visual_transition(self, progress: float) -> None:
         if not self.DEVELOPMENT_STATE_CONTROLS:
@@ -82,11 +97,7 @@ class MainWindow(QMainWindow):
         )
 
     def _on_materialization_progress(self, progress, phase) -> None:
-        if self.DEVELOPMENT_STATE_CONTROLS:
-            self.presence_status_bar.show_materialization(
-                progress, phase, len(self.core.scene.particles),
-                self.core.scene.active_materialization_seed,
-            )
+        pass
 
     def _install_state_shortcuts(self) -> None:
         if not self.DEVELOPMENT_STATE_CONTROLS:
@@ -111,6 +122,14 @@ class MainWindow(QMainWindow):
         listen.setContext(Qt.WindowShortcut)
         listen.activated.connect(self.voice_manager.start_listening)
         self._state_shortcuts.append(listen)
+        developer_tools = QShortcut(QKeySequence("F12"), self)
+        developer_tools.setContext(Qt.WindowShortcut)
+        developer_tools.activated.connect(self.toggle_developer_tools)
+        self._state_shortcuts.append(developer_tools)
+        simulate_wake = QShortcut(QKeySequence("Ctrl+Space"), self)
+        simulate_wake.setContext(Qt.WindowShortcut)
+        simulate_wake.activated.connect(lambda: self.wake_manager.simulate(0.95))
+        self._state_shortcuts.append(simulate_wake)
         for key, callback in (
             ("A", self._toggle_ambient),
             ("B", self._cycle_ambient_mode),
@@ -142,6 +161,12 @@ class MainWindow(QMainWindow):
         self.core.scene.ambient_controller.reseed()
         self._show_ambient_status()
 
+    def toggle_developer_tools(self) -> None:
+        self.developer_dock.setVisible(not self.developer_dock.isVisible())
+        if self.developer_dock.isVisible():
+            self.developer_dock.raise_()
+
     def closeEvent(self, event) -> None:
+        self.wake_manager.shutdown()
         self.voice_manager.shutdown()
         super().closeEvent(event)

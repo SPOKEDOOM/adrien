@@ -2,7 +2,8 @@
 
 ADRIEN is a modular PySide6 desktop assistant. Its voice pipeline supports typed
 development input, optional local microphone transcription, and local speech output.
-It has no wake word, cloud service, LLM, or continuous-conversation loop.
+It includes a development Wake Engine, but no cloud service, LLM, or
+continuous-conversation loop.
 
 ## Setup
 
@@ -42,7 +43,8 @@ default output device.
 ## Voice controls and troubleshooting
 
 Wait for `READY`, choose a device, and click **Start Listening**. Speak, then remain
-quiet for about one second. **Stop / Cancel** safely returns to READY. **Test input**
+quiet for about one second. **Stop and Transcribe** finalizes audio; **Cancel**
+discards it and safely returns to READY. **Test input**
 remains usable when packages, permissions, devices, or models are unavailable.
 
 If no devices appear, check Windows microphone privacy permissions and confirm that
@@ -51,3 +53,18 @@ panel and technical details are logged in the terminal.
 
 Audio remains in memory and is discarded after transcription. Debug recordings are
 disabled by default; ADRIEN does not retain microphone audio in Phase 2.
+
+## Wake Engine development workflow
+
+The Phase 3 default is the dependency-free development backend. Open the Wake Engine
+debug panel, click **Force Sleep**, then use **Simulate Wake** or confidence injection.
+Accepted candidates run `SLEEP -> MATERIALIZING -> READY` and begin normal command
+listening. Spoken acknowledgement remains available but is disabled by default. With
+no command ADRIEN sleeps after eight seconds. After a
+response it remains READY for one second, then sleeps and resumes monitoring.
+
+The fallback opens no microphone stream. A trained production model can later replace
+`WakeBackend` while preserving `WakeManager` and the single-owner `AudioMode` handoff.
+
+Developer Tools is hidden by default. Open it with the small gear button or `F12`.
+`Ctrl+Space` simulates wake while ADRIEN is sleeping.

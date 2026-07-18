@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum, auto
 
 from app.voice.voice_config import VoiceConfig
 
@@ -14,6 +15,13 @@ class AudioDevice:
     default_sample_rate: float
 
 
+class AudioMode(Enum):
+    IDLE = auto()
+    WAKE_MONITORING = auto()
+    COMMAND_LISTENING = auto()
+    TTS_PLAYBACK = auto()
+
+
 class AudioController:
     """Enumerates and validates PortAudio devices without requiring sounddevice."""
 
@@ -21,6 +29,19 @@ class AudioController:
         self.config = config
         self.muted = False
         self._sounddevice = sounddevice_module
+        self._mode = AudioMode.IDLE
+
+    @property
+    def mode(self) -> AudioMode:
+        return self._mode
+
+    def set_mode(self, mode: AudioMode) -> bool:
+        if not isinstance(mode, AudioMode) or mode is self._mode:
+            return False
+        previous = self._mode
+        self._mode = mode
+        print(f"Audio mode: {previous.name} -> {mode.name}", flush=True)
+        return True
 
     def _module(self):
         if self._sounddevice is not None:
