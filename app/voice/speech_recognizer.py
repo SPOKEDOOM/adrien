@@ -8,6 +8,11 @@ class SpeechRecognizer(QObject):
 
     recognized = Signal(str)
     error = Signal(str)
+    level_changed = Signal(float)
+    rms_changed = Signal(float)
+    speech_changed = Signal(bool)
+    duration_changed = Signal(float)
+    status_changed = Signal(str)
 
     def start(self) -> None:
         raise NotImplementedError
@@ -17,6 +22,9 @@ class SpeechRecognizer(QObject):
 
     def cancel(self) -> None:
         raise NotImplementedError
+
+    def shutdown(self) -> None:
+        self.cancel()
 
 
 class PlaceholderSpeechRecognizer(SpeechRecognizer):

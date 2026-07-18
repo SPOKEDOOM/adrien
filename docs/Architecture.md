@@ -240,3 +240,23 @@ Microphone -> SpeechRecognizer -> VoiceManager placeholder conversation
 The placeholder recognizer intentionally uses `submit_text()` rather than accessing a microphone. This keeps the foundation deterministic, platform-neutral, and testable while real audio capture is deferred. The placeholder conversation replies to `Hello`, `Time`, and `Date`; all other input gets a fixed next-stage reply. `AudioController` owns device names, clamped volume, mute, and future device-selection settings without opening platform audio devices.
 
 Voice stages request `LISTENING`, `THINKING`, `RESPONDING`, then `READY`; cancellation and errors return to `READY`. The development Voice Pipeline panel shows listening, recognized text, reply, speech state, microphone, and speaker. With development controls enabled, press `V` to listen and submit placeholder text in the panel.
+
+## Sprint 5 Phase 2: Local Voice I/O
+
+```text
+sounddevice callback -> energy endpoint detector -> background FasterWhisperSTT
+                    -> VoiceManager -> background Piper or Windows SAPI
+```
+
+The PortAudio callback copies mono PCM, calculates RMS energy, updates bounded
+counters, and requests completion; it never transcribes. Speech requires a configured
+confirmation window. Capture ends after configured silence or the maximum duration,
+and too-short speech is rejected.
+
+Faster-Whisper lazily loads and reuses one model. Transcription, Piper synthesis, and
+playback run on workers. When Piper is absent on Windows, local System.Speech/SAPI is
+used. Capture stops before `RESPONDING`, and listening never restarts automatically.
+
+Optional imports are lazy, the typed path remains available, and the panel reports
+actual backends. Devices are enumerated at runtime. Window shutdown cancels work and
+performs bounded joins. Raw audio stays in memory and is discarded after use.

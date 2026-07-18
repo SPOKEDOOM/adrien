@@ -6,6 +6,7 @@ from PySide6.QtCore import QObject, QTimer, Signal
 class SpeechSynthesizer(QObject):
     """Replaceable text-to-speech contract."""
 
+    started = Signal()
     finished = Signal()
     error = Signal(str)
 
@@ -14,6 +15,9 @@ class SpeechSynthesizer(QObject):
 
     def stop(self) -> None:
         raise NotImplementedError
+
+    def shutdown(self) -> None:
+        self.stop()
 
 
 class PlaceholderSpeechSynthesizer(SpeechSynthesizer):
@@ -28,6 +32,7 @@ class PlaceholderSpeechSynthesizer(SpeechSynthesizer):
         self.stop()
         self.last_text = text
         self.is_speaking = True
+        self.started.emit()
         QTimer.singleShot(1, self._finish)
 
     def stop(self) -> None:

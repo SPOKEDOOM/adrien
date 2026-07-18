@@ -5,11 +5,13 @@
 - Sprint 1-3: modular desktop shell, Presence Engine, and state transitions.
 - Sprint 4: cinematic materialization and Ambient Living Presence.
 - Sprint 5 Phase 1: backend-neutral voice pipeline foundation with placeholder STT, conversation, and TTS.
+- Sprint 5 Phase 2: optional microphone capture, energy endpointing, Faster-Whisper
+  STT, Piper/Windows SAPI output, device controls, and safe workers.
 
 ## Deferred
 
-- Real microphone capture and selected STT/TTS backend integration.
 - Wake-word detection.
 - AI backend, memory, plugins, automation, and OS control.
 
-The voice foundation is intentionally complete only through replaceable interfaces and deterministic placeholders. Deferred work must preserve its separation from rendering and UI concerns.
+Wake-word and continuous-conversation behavior remain deferred. Typed input remains
+the deterministic fallback when optional local audio dependencies are unavailable.

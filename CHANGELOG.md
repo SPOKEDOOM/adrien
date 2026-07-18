@@ -1,5 +1,19 @@
 # ADRIEN Changelog
 
+## Sprint 5 Phase 2
+
+- Fixed real microphone completion diagnostics, practical RMS thresholding, silence
+  endpoint tracking, recording validation, and explicit Stop-and-Transcribe behavior.
+- Split Stop and Cancel controls and exposed live RMS, threshold, speech detection,
+  duration, model state, transcription state, and last error in the debug panel.
+- Added optional sounddevice microphone capture with bounded energy endpointing,
+  cancellation, input levels, and safe device release.
+- Added reusable lazy Faster-Whisper STT and background transcription.
+- Added background Piper synthesis/playback and local Windows SAPI fallback.
+- Expanded voice configuration, device selectors, controls, diagnostics, and errors.
+- Preserved typed fallback and added worker shutdown on window close.
+- Added mocked tests for devices, endpointing, STT/TTS, state recovery, and shutdown.
+
 ## Sprint 5 Phase 1
 
 - Added modular `app.voice` infrastructure: `VoiceManager`, abstract recognizer/synthesizer contracts, placeholder backends, audio preferences, and centralized voice configuration.

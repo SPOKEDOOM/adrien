@@ -141,3 +141,7 @@ class MainWindow(QMainWindow):
     def _new_ambient_seed(self) -> None:
         self.core.scene.ambient_controller.reseed()
         self._show_ambient_status()
+
+    def closeEvent(self, event) -> None:
+        self.voice_manager.shutdown()
+        super().closeEvent(event)
