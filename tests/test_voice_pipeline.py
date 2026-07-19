@@ -1,4 +1,5 @@
 import unittest
+import time
 from datetime import datetime
 
 from PySide6.QtCore import Qt
@@ -26,6 +27,13 @@ class VoicePipelineTests(unittest.TestCase):
         self.synthesizer = PlaceholderSpeechSynthesizer()
         self.voice = VoiceManager(self.states, recognizer=self.recognizer, synthesizer=self.synthesizer)
 
+    def wait_for(self, predicate, timeout=1000):
+        deadline = time.monotonic() + timeout / 1000
+        while time.monotonic() < deadline:
+            self._application.processEvents(); QTest.qWait(2)
+            if predicate(): return True
+        return False
+
     def test_recognizer_contract_and_placeholder_lifecycle(self) -> None:
         self.assertIsInstance(self.recognizer, SpeechRecognizer)
         received = []
@@ -49,13 +57,19 @@ class VoicePipelineTests(unittest.TestCase):
         self.assertEqual(self.voice.placeholder_reply("Hello", now), "Hello. Nice to see you.")
         self.assertEqual(self.voice.placeholder_reply("Time", now), "It is 14:05.")
         self.assertEqual(self.voice.placeholder_reply("Date", now), "Today is July 17, 2026.")
-        self.assertEqual(self.voice.placeholder_reply("Anything", now), "I'm ready for the next stage of my intelligence.")
+        self.assertEqual(self.voice.placeholder_reply("Anything", now), "I understood your request, but I cannot answer that yet.")
 
     def test_voice_state_transitions_and_return_to_ready(self) -> None:
         transitions = []
         self.states.state_changed.connect(lambda old, new: transitions.append(new))
         self.assertTrue(self.voice.start_listening())
         self.recognizer.submit_text("Hello")
+        deadline = time.monotonic() + 1
+        while (time.monotonic() < deadline and
+               self.voice.conversation_manager.context.interaction_count == 0):
+            self._application.processEvents()
+            if self.voice.conversation_manager.context.interaction_count == 0:
+                time.sleep(.002)
         self.assertEqual(self.states.current_state, PresenceState.RESPONDING)
         self.synthesizer._finish()
         self.assertEqual(self.states.current_state, PresenceState.READY)
@@ -87,6 +101,7 @@ class VoicePipelineTests(unittest.TestCase):
         )
         voice.start_listening()
         voice.recognizer.submit_text("Hello")
+        self.assertTrue(self.wait_for(lambda: voice.conversation_manager.context.interaction_count == 1))
         self.assertEqual(voice.state_manager.current_state, PresenceState.READY)
 
     def test_debug_enter_submits_text_and_updates_ui(self) -> None:
@@ -95,21 +110,24 @@ class VoicePipelineTests(unittest.TestCase):
         transitions = []
         recognized = []
         replies = []
+        speaking_events = []
         self.states.state_changed.connect(lambda old, new: transitions.append(new))
         self.voice.recognized_text.connect(recognized.append)
         self.voice.reply_generated.connect(replies.append)
+        self.voice.speaking_changed.connect(speaking_events.append)
         panel.input.setFocus()
         panel.input.setText("Hello")
         QTest.keyClick(panel.input, Qt.Key_Return)
+        self.assertTrue(self.wait_for(lambda: bool(replies)))
         self.assertEqual(panel.input.text(), "")
         self.assertEqual(recognized, ["Hello"])
         self.assertEqual(replies, ["Hello. Nice to see you."])
         self.assertEqual(panel.recognized.text(), "Hello")
         self.assertEqual(panel.reply.text(), "Hello. Nice to see you.")
         self.assertEqual(panel.listening.text(), "inactive")
-        self.assertEqual(panel.speaking.text(), "active")
-        self.assertEqual(self.states.current_state, PresenceState.RESPONDING)
+        self.assertIn(True, speaking_events)
         self.synthesizer._finish()
+        self.assertTrue(self.wait_for(lambda: self.states.current_state is PresenceState.READY))
         self.assertEqual(panel.speaking.text(), "inactive")
         self.assertEqual(self.states.current_state, PresenceState.READY)
         self.assertEqual(

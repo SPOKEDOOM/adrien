@@ -46,9 +46,11 @@ class MainWindow(QMainWindow):
         self.developer_dock.setAllowedAreas(Qt.RightDockWidgetArea)
         self.developer_dock.setFeatures(QDockWidget.DockWidgetClosable)
         self.developer_dock.setWidget(self.developer_tools_panel)
-        self.developer_dock.setMinimumWidth(320)
+        self.developer_dock.setMinimumWidth(360)
         self.developer_dock.setMaximumWidth(380)
         self.addDockWidget(Qt.RightDockWidgetArea, self.developer_dock)
+        self.developer_dock.setFloating(True)
+        self.developer_dock.resize(380, 650)
         self.developer_dock.hide()
 
         self.presence_status_bar = AdrienStatusBar()
@@ -65,7 +67,10 @@ class MainWindow(QMainWindow):
         materialization.progress_changed.connect(self._on_materialization_progress)
         self._on_state_changed(None, self.state_manager.current_state)
         self._state_shortcuts: list[QShortcut] = []
+        self._developer_tab_shortcuts: list[QShortcut] = []
         self._install_state_shortcuts()
+        self._install_developer_tab_shortcuts()
+        self.developer_dock.visibilityChanged.connect(self._set_developer_shortcuts_enabled)
 
         QTimer.singleShot(500, self._begin_materialization)
         self.wake_manager.start()
@@ -165,6 +170,20 @@ class MainWindow(QMainWindow):
         self.developer_dock.setVisible(not self.developer_dock.isVisible())
         if self.developer_dock.isVisible():
             self.developer_dock.raise_()
+
+    def _install_developer_tab_shortcuts(self) -> None:
+        for index in range(4):
+            shortcut = QShortcut(QKeySequence(f"Ctrl+{index + 1}"), self)
+            shortcut.setContext(Qt.WindowShortcut)
+            shortcut.activated.connect(
+                lambda selected=index: self.developer_tools_panel.tabs.setCurrentIndex(selected)
+            )
+            shortcut.setEnabled(False)
+            self._developer_tab_shortcuts.append(shortcut)
+
+    def _set_developer_shortcuts_enabled(self, visible: bool) -> None:
+        for shortcut in self._developer_tab_shortcuts:
+            shortcut.setEnabled(visible)
 
     def closeEvent(self, event) -> None:
         self.wake_manager.shutdown()

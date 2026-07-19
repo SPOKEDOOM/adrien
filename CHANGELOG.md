@@ -1,5 +1,31 @@
 # ADRIEN Changelog
 
+## Sprint 7 Phase 2
+
+- Added a backend-independent personality profile, manager, prompt builder, and
+  composable trait registry.
+- Routed one personality system prompt through the Conversation Engine to every
+  AI backend request.
+- Added live personality reload and prompt preview controls to Developer Tools.
+- Updated placeholder replies to use ADRIEN's configured identity.
+
+## Sprint 7 Phase 1
+
+- Added structured AI requests/responses, backend contracts, health tracking, hybrid
+  routing, privacy rules, deterministic fallback, cancellation, and stale-result safety.
+- Added honest offline local/OpenAI stubs and adapted the existing placeholder logic.
+- Integrated AIBackendManager beneath ConversationManager without changing VoiceManager's
+  recognition and speech-output contract.
+- Expanded the compact Conversation tab with provider status, routing modes, fallback
+  diagnostics, health tests, hybrid testing, and request cancellation.
+
+## Sprint 6 Phase 1
+
+- Added a backend-neutral asynchronous Conversation Engine between recognition and TTS.
+- Added bounded conversation context, deterministic local placeholder responses,
+  timeout/error recovery, stale-worker protection, diagnostics, and safe shutdown.
+- Preserved the existing VoiceManager audio lifecycle and Presence-state transitions.
+
 ## Sprint 5 Phase 3
 
 - Refactored all technical controls into one hidden, scrollable Developer Tools dock.

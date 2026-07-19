@@ -1,125 +1,289 @@
+from __future__ import annotations
+
+from datetime import datetime
+
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QComboBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QScrollArea, QVBoxLayout, QWidget,
+    QComboBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPlainTextEdit,
+    QPushButton, QTabWidget, QToolButton, QVBoxLayout, QWidget,
 )
 
 
-class DeveloperToolsPanel(QScrollArea):
-    """One compact, scrollable home for non-production controls and diagnostics."""
+class DeveloperToolsPanel(QWidget):
+    """Compact tabbed developer workspace with no outer scrolling surface."""
+
+    TAB_NAMES = ("Voice", "Wake", "Conversation", "Diagnostics")
 
     def __init__(self, wake_manager, voice_manager) -> None:
         super().__init__()
         self.wake_manager = wake_manager
         self.voice_manager = voice_manager
-        self.setWidgetResizable(True)
-        self.setMinimumWidth(320)
+        self.setMinimumWidth(350)
         self.setMaximumWidth(380)
-        content = QWidget()
-        layout = QVBoxLayout(content)
-        layout.addWidget(self._wake_section())
-        layout.addWidget(self._voice_section())
-        layout.addWidget(self._diagnostics_section())
-        layout.addStretch(1)
-        self.setWidget(content)
+        self.setMinimumHeight(560)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(6)
+        self.tabs = QTabWidget()
+        self.tabs.setDocumentMode(True)
+        layout.addWidget(self.tabs)
+        self.tabs.addTab(self._voice_tab(), "Voice")
+        self.tabs.addTab(self._wake_tab(), "Wake")
+        self.tabs.addTab(self._conversation_tab(), "Conversation")
+        self.tabs.addTab(self._diagnostics_tab(), "Diagnostics")
         self._connect_updates()
 
     @staticmethod
     def _button_row(*buttons) -> QWidget:
-        widget = QWidget()
-        row = QHBoxLayout(widget)
-        row.setContentsMargins(0, 0, 0, 0)
+        widget = QWidget(); row = QHBoxLayout(widget)
+        row.setContentsMargins(0, 0, 0, 0); row.setSpacing(5)
         for button in buttons:
-            row.addWidget(button)
+            button.setMaximumHeight(28); row.addWidget(button)
         return widget
 
-    def _wake_section(self) -> QGroupBox:
-        section = QGroupBox("Wake Engine")
-        layout = QVBoxLayout(section)
-        self.wake_start = QPushButton("Start")
-        self.wake_stop = QPushButton("Stop")
-        self.simulate_wake = QPushButton("Simulate Wake")
-        self.simulate_low = QPushButton("Low 0.40")
-        self.simulate_high = QPushButton("High 0.95")
-        layout.addWidget(self._button_row(self.wake_start, self.wake_stop))
-        layout.addWidget(self.simulate_wake)
-        layout.addWidget(self._button_row(self.simulate_low, self.simulate_high))
-        self.wake_start.clicked.connect(self.wake_manager.start)
-        self.wake_stop.clicked.connect(self.wake_manager.stop)
-        self.simulate_wake.clicked.connect(lambda: self.wake_manager.simulate(0.95))
-        self.simulate_low.clicked.connect(lambda: self.wake_manager.simulate(0.40))
-        self.simulate_high.clicked.connect(lambda: self.wake_manager.simulate(0.95))
-        return section
+    @staticmethod
+    def _form(widget: QWidget) -> QFormLayout:
+        form = QFormLayout(widget)
+        form.setContentsMargins(8, 8, 8, 8)
+        form.setHorizontalSpacing(8); form.setVerticalSpacing(6)
+        form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+        return form
 
-    def _voice_section(self) -> QGroupBox:
-        section = QGroupBox("Voice")
-        layout = QVBoxLayout(section)
+    @staticmethod
+    def _readonly(text="—", height=28) -> QLineEdit:
+        field = QLineEdit(text); field.setReadOnly(True); field.setMaximumHeight(height)
+        field.setToolTip(text)
+        return field
+
+    @staticmethod
+    def _set_field(field, text) -> None:
+        value = str(text)
+        field.setText(value); field.setToolTip(value)
+
+    def _voice_tab(self) -> QWidget:
+        tab = QWidget(); form = self._form(tab)
         self.voice_start = QPushButton("Start Listening")
-        self.voice_stop = QPushButton("Stop and Transcribe")
+        self.voice_stop = QPushButton("Stop & Transcribe")
         self.voice_cancel = QPushButton("Cancel")
-        layout.addWidget(self.voice_start)
-        layout.addWidget(self._button_row(self.voice_stop, self.voice_cancel))
-        self.test_input = QLineEdit()
-        self.test_input.setPlaceholderText("Typed test input")
-        layout.addWidget(self.test_input)
-        self.voice_start.clicked.connect(self.voice_manager.start_listening)
-        self.voice_stop.clicked.connect(self.voice_manager.stop_listening)
-        self.voice_cancel.clicked.connect(self.voice_manager.cancel)
-        self.test_input.returnPressed.connect(self._submit_text)
-        return section
-
-    def _diagnostics_section(self) -> QGroupBox:
-        section = QGroupBox("Diagnostics")
-        layout = QFormLayout(section)
-        self.backend_selector = QComboBox()
-        self.backend_selector.addItem("Development fallback", "development")
-        self.backend = QLabel(self.wake_manager.backend_name)
-        self.microphone = QComboBox()
+        self.microphone = QComboBox(); self.microphone.setMaximumHeight(28)
         self.microphone.addItem("System default", None)
         for device in self.voice_manager.audio_controller.input_devices():
             self.microphone.addItem(device.name, device.index)
-        self.audio_mode = QLabel(self.voice_manager.audio_controller.mode.name)
-        self.confidence = QLabel("—")
-        self.threshold = QLabel(f"{self.wake_manager.config.wake_confidence_threshold:.2f}")
-        self.last_error = QLabel("—")
-        self.recognized = QLabel("—")
-        self.reply = QLabel("—")
-        for label, widget in (
-            ("Backend selection", self.backend_selector), ("Backend", self.backend),
-            ("Microphone", self.microphone), ("Audio mode", self.audio_mode),
-            ("Confidence", self.confidence), ("Threshold", self.threshold),
-            ("Last error", self.last_error), ("Recognized", self.recognized),
-            ("Reply", self.reply),
-        ):
-            layout.addRow(label, widget)
+        self.input_level = self._readonly("0.00000")
+        self.recognized = self._readonly()
+        self.reply = self._readonly()
+        self.test_input = QLineEdit(); self.test_input.setMaximumHeight(28)
+        self.test_input.setPlaceholderText("Typed test input")
+        form.addRow(self._button_row(self.voice_start, self.voice_stop, self.voice_cancel))
+        form.addRow("Microphone", self.microphone); form.addRow("Input level", self.input_level)
+        form.addRow("Recognized", self.recognized); form.addRow("Last reply", self.reply)
+        form.addRow("Test input", self.test_input)
+        self.voice_start.clicked.connect(self.voice_manager.start_listening)
+        self.voice_stop.clicked.connect(self.voice_manager.stop_listening)
+        self.voice_cancel.clicked.connect(self.voice_manager.cancel)
         self.microphone.currentIndexChanged.connect(
-            lambda: self.voice_manager.audio_controller.set_input_device(
-                self.microphone.currentData()
-            )
+            lambda: self.voice_manager.audio_controller.set_input_device(self.microphone.currentData())
         )
-        return section
+        self.test_input.returnPressed.connect(self._submit_text)
+        return tab
+
+    def _wake_tab(self) -> QWidget:
+        tab = QWidget(); form = self._form(tab)
+        self.wake_start = QPushButton("Start Wake")
+        self.wake_stop = QPushButton("Stop Wake")
+        self.simulate_wake = QPushButton("Simulate Wake")
+        self.force_sleep = QPushButton("Force Sleep")
+        self.simulate_low = QPushButton("Test 0.40")
+        self.simulate_high = QPushButton("Test 0.95")
+        self.backend_selector = QComboBox(); self.backend_selector.addItem("Development fallback", "development")
+        self.backend = self._readonly(self.wake_manager.backend_name)
+        self.confidence = self._readonly()
+        self.wake_status = self._readonly("running" if self.wake_manager.running else "stopped")
+        form.addRow(self._button_row(self.wake_start, self.wake_stop))
+        form.addRow(self._button_row(self.simulate_wake, self.force_sleep))
+        form.addRow("Backend selection", self.backend_selector)
+        form.addRow("Backend", self.backend); form.addRow("Last confidence", self.confidence)
+        form.addRow("Wake status", self.wake_status)
+        form.addRow("Confidence tests", self._button_row(self.simulate_low, self.simulate_high))
+        self.wake_start.clicked.connect(self.wake_manager.start); self.wake_stop.clicked.connect(self.wake_manager.stop)
+        self.simulate_wake.clicked.connect(lambda: self.wake_manager.simulate(.95))
+        self.force_sleep.clicked.connect(self.wake_manager.force_sleep)
+        self.simulate_low.clicked.connect(lambda: self.wake_manager.simulate(.40))
+        self.simulate_high.clicked.connect(lambda: self.wake_manager.simulate(.95))
+        return tab
+
+    def _conversation_tab(self) -> QWidget:
+        tab = QWidget(); form = self._form(tab)
+        manager = self.voice_manager.conversation_manager
+        self.hybrid_mode = QComboBox(); self.hybrid_mode.addItems(manager.ai_manager.router.MODES)
+        self.hybrid_mode.setCurrentText(manager.ai_manager.config.hybrid_mode)
+        self.selected_backend = self._readonly("none")
+        self.local_backend_status = self._readonly("unavailable")
+        self.openai_backend_status = self._readonly("unavailable")
+        self.placeholder_backend_status = self._readonly("available")
+        self.last_backend_used = self._readonly("none")
+        self.fallback_used = self._readonly("no")
+        self.ai_last_error = self._readonly()
+        self.current_personality = self._readonly(manager.personality_manager.profile.name)
+        self.reload_personality = QPushButton("Reload Personality")
+        self.preview_personality_prompt = QPushButton("Preview System Prompt")
+        self.conversation_backend = self._readonly(manager.backend_name)
+        self.conversation_status = self._readonly(manager.backend_status)
+        self.conversation_input = self._readonly()
+        self.conversation_reply = self._readonly()
+        self.conversation_count = self._readonly("0")
+        self.conversation_time = self._readonly("0.000 s")
+        self.clear_conversation = QPushButton("Clear Conversation History")
+        self.test_local = QPushButton("Test Local"); self.test_openai = QPushButton("Test OpenAI")
+        self.test_placeholder = QPushButton("Test Placeholder")
+        self.run_hybrid_test = QPushButton("Run Hybrid Test"); self.cancel_ai_request = QPushButton("Cancel Request")
+        self.clear_conversation.setMaximumHeight(28)
+        form.addRow("Hybrid mode", self.hybrid_mode); form.addRow("Selected", self.selected_backend)
+        form.addRow("Local / OpenAI", self._button_row(self.local_backend_status, self.openai_backend_status))
+        form.addRow("Placeholder", self.placeholder_backend_status)
+        form.addRow("Last backend", self.last_backend_used); form.addRow("Fallback used", self.fallback_used)
+        form.addRow("Last user input", self.conversation_input); form.addRow("Last reply", self.conversation_reply)
+        form.addRow("Conversation count", self.conversation_count); form.addRow("Processing time", self.conversation_time)
+        form.addRow("Last AI error", self.ai_last_error)
+        form.addRow("Personality", self.current_personality)
+        form.addRow(self._button_row(self.reload_personality, self.preview_personality_prompt))
+        form.addRow(self._button_row(self.test_local, self.test_openai, self.test_placeholder))
+        form.addRow(self._button_row(self.run_hybrid_test, self.cancel_ai_request))
+        form.addRow(self.clear_conversation)
+        self.clear_conversation.clicked.connect(manager.clear_history)
+        self.hybrid_mode.currentTextChanged.connect(manager.set_hybrid_mode)
+        self.test_local.clicked.connect(lambda: manager.test_backend("local"))
+        self.test_openai.clicked.connect(lambda: manager.test_backend("openai"))
+        self.test_placeholder.clicked.connect(lambda: manager.test_backend("placeholder"))
+        self.run_hybrid_test.clicked.connect(lambda: self.voice_manager.submit_debug_text("Hello"))
+        self.cancel_ai_request.clicked.connect(self.voice_manager.cancel)
+        self.reload_personality.clicked.connect(manager.reload_personality)
+        self.preview_personality_prompt.clicked.connect(self._preview_personality_prompt)
+        return tab
+
+    def _diagnostics_tab(self) -> QWidget:
+        tab = QWidget(); layout = QVBoxLayout(tab)
+        layout.setContentsMargins(8, 8, 8, 8); layout.setSpacing(6)
+        summary = QWidget(); form = self._form(summary)
+        self.presence_state = self._readonly(self.voice_manager.state_manager.current_state.name)
+        self.audio_mode = self._readonly(self.voice_manager.audio_controller.mode.name)
+        self.backend_status = self._readonly(self.voice_manager.conversation_manager.backend_status)
+        self.last_error = self._readonly()
+        form.addRow("Presence", self.presence_state); form.addRow("Audio mode", self.audio_mode)
+        form.addRow("Backend status", self.backend_status); form.addRow("Last error", self.last_error)
+        layout.addWidget(summary)
+        self.advanced_toggle = QToolButton(); self.advanced_toggle.setText("Advanced Details")
+        self.advanced_toggle.setCheckable(True); self.advanced_toggle.setArrowType(Qt.RightArrow)
+        layout.addWidget(self.advanced_toggle)
+        self.advanced_details = QWidget(); advanced = self._form(self.advanced_details)
+        self.threshold = self._readonly(f"{self.wake_manager.config.wake_confidence_threshold:.2f}")
+        self.sample_rate = self._readonly(str(self.voice_manager.config.sample_rate))
+        self.recording_duration = self._readonly("0.00 s")
+        self.worker_status = self._readonly("idle")
+        self.stt_status = self._readonly("idle"); self.tts_status = self._readonly("idle")
+        self.microphone_ownership = self._readonly(self.voice_manager.audio_controller.mode.name)
+        self.raw_details = self._readonly(f"STT: {self.voice_manager.stt_backend} · TTS: {self.voice_manager.tts_backend}")
+        advanced.addRow("Wake threshold", self.threshold); advanced.addRow("Sample rate", self.sample_rate)
+        advanced.addRow("Recording duration", self.recording_duration); advanced.addRow("Worker", self.worker_status)
+        advanced.addRow("STT status", self.stt_status); advanced.addRow("TTS status", self.tts_status)
+        advanced.addRow("Microphone owner", self.microphone_ownership); advanced.addRow("Technical", self.raw_details)
+        self.advanced_details.hide(); layout.addWidget(self.advanced_details)
+        self.event_log = QPlainTextEdit(); self.event_log.setReadOnly(True)
+        self.event_log.setMaximumBlockCount(50); self.event_log.setFixedHeight(150)
+        layout.addWidget(QLabel("Recent events")); layout.addWidget(self.event_log)
+        self.advanced_toggle.toggled.connect(self._toggle_advanced)
+        return tab
 
     def _connect_updates(self) -> None:
-        self.wake_manager.backend_changed.connect(self.backend.setText)
-        self.wake_manager.candidate_evaluated.connect(
-            lambda result, accepted, reason: self.confidence.setText(f"{result.confidence:.2f}")
+        self.wake_manager.backend_changed.connect(lambda text: self._set_field(self.backend, text))
+        self.wake_manager.candidate_evaluated.connect(self._wake_candidate)
+        self.wake_manager.status_changed.connect(self._wake_status_changed)
+        self.wake_manager.monitoring_changed.connect(
+            lambda active: self._wake_status_changed("monitoring" if active else "idle")
         )
-        self.wake_manager.error.connect(self.last_error.setText)
-        self.voice_manager.error.connect(self.last_error.setText)
-        self.voice_manager.recognized_text.connect(self.recognized.setText)
-        self.voice_manager.reply_generated.connect(self.reply.setText)
+        self.wake_manager.error.connect(self._error)
+        self.voice_manager.error.connect(self._error)
+        self.voice_manager.recognized_text.connect(self._recognized)
+        self.voice_manager.reply_generated.connect(self._reply)
         self.voice_manager.listening_changed.connect(self._listening_changed)
-        self.voice_manager.state_manager.state_changed.connect(
-            lambda old, new: self.audio_mode.setText(
-                self.voice_manager.audio_controller.mode.name
-            )
+        self.voice_manager.level_changed.connect(lambda value: self._set_field(self.input_level, f"{value:.5f}"))
+        self.voice_manager.duration_changed.connect(lambda value: self._set_field(self.recording_duration, f"{value:.2f} s"))
+        self.voice_manager.status_changed.connect(self._voice_status)
+        self.voice_manager.synthesizer.started.connect(lambda: self._set_field(self.tts_status, "speaking"))
+        self.voice_manager.synthesizer.finished.connect(lambda: self._set_field(self.tts_status, "idle"))
+        self.voice_manager.state_manager.state_changed.connect(self._state_changed)
+        self.voice_manager.conversation_manager.processing_started.connect(
+            lambda text: self._set_field(self.worker_status, "processing")
         )
+        self.voice_manager.conversation_manager.processing_finished.connect(
+            lambda: self._set_field(self.worker_status, "idle")
+        )
+        self.voice_manager.conversation_manager.diagnostics_changed.connect(self._conversation_diagnostics)
+
+    def _toggle_advanced(self, opened: bool) -> None:
+        self.advanced_details.setVisible(opened)
+        self.advanced_toggle.setArrowType(Qt.DownArrow if opened else Qt.RightArrow)
+
+    def _wake_candidate(self, result, accepted, reason) -> None:
+        self._set_field(self.confidence, f"{result.confidence:.2f}")
+        self._log(f"Wake {'accepted' if accepted else 'rejected'}: {reason}")
+
+    def _wake_status_changed(self, status: str) -> None:
+        self._set_field(self.wake_status, status); self._log(f"Wake: {status}")
+
+    def _voice_status(self, status: str) -> None:
+        self._set_field(self.stt_status, status); self._log(f"Voice: {status}")
+
+    def _recognized(self, text: str) -> None:
+        self._set_field(self.recognized, text); self._log(f"Recognized: {text}")
+
+    def _reply(self, text: str) -> None:
+        self._set_field(self.reply, text); self._log(f"Reply: {text}")
+
+    def _error(self, message: str) -> None:
+        self._set_field(self.last_error, message); self._log(f"Error: {message}")
+
+    def _state_changed(self, old, new) -> None:
+        self._set_field(self.presence_state, new.name)
+        mode = self.voice_manager.audio_controller.mode.name
+        self._set_field(self.audio_mode, mode); self._set_field(self.microphone_ownership, mode)
+        self._log(f"Presence: {new.name}")
+
+    def _conversation_diagnostics(self, diagnostics: dict) -> None:
+        self._set_field(self.conversation_backend, diagnostics["backend"])
+        self._set_field(self.conversation_input, diagnostics["last_user_input"] or "—")
+        self._set_field(self.conversation_reply, diagnostics["last_reply"] or "—")
+        self._set_field(self.conversation_count, diagnostics["conversation_count"])
+        self._set_field(self.conversation_time, f"{float(diagnostics['processing_seconds']):.3f} s")
+        self._set_field(self.conversation_status, diagnostics["backend_status"])
+        self._set_field(self.backend_status, diagnostics["backend_status"])
+        self.hybrid_mode.blockSignals(True); self.hybrid_mode.setCurrentText(diagnostics["hybrid_mode"]); self.hybrid_mode.blockSignals(False)
+        self._set_field(self.selected_backend, diagnostics["selected_backend"])
+        statuses = diagnostics["backend_statuses"]
+        self._set_field(self.local_backend_status, statuses.get("local", "unregistered"))
+        self._set_field(self.openai_backend_status, statuses.get("openai", "unregistered"))
+        self._set_field(self.placeholder_backend_status, statuses.get("placeholder", "unregistered"))
+        self._set_field(self.last_backend_used, diagnostics["selected_backend"])
+        self._set_field(self.fallback_used, "yes" if diagnostics["fallback_used"] else "no")
+        self._set_field(self.ai_last_error, diagnostics["last_error"] or "—")
+        self._set_field(self.current_personality, diagnostics["personality"])
+
+    def _preview_personality_prompt(self) -> None:
+        prompt = self.voice_manager.conversation_manager.preview_system_prompt()
+        self.preview_personality_prompt.setToolTip(prompt)
+        message = QMessageBox(self)
+        message.setWindowTitle("ADRIEN System Prompt")
+        message.setText("Current provider-independent personality prompt")
+        message.setDetailedText(prompt)
+        message.exec()
 
     def _listening_changed(self, active: bool) -> None:
-        self.voice_stop.setEnabled(active)
-        self.voice_cancel.setEnabled(active)
-        self.audio_mode.setText(self.voice_manager.audio_controller.mode.name)
+        self.voice_stop.setEnabled(active); self.voice_cancel.setEnabled(active)
+        self._set_field(self.stt_status, "listening" if active else "idle")
 
     def _submit_text(self) -> None:
         text = self.test_input.text().strip()
-        if text and self.voice_manager.submit_debug_text(text):
-            self.test_input.clear()
+        if text and self.voice_manager.submit_debug_text(text): self.test_input.clear()
+
+    def _log(self, message: str) -> None:
+        self.event_log.appendPlainText(f"{datetime.now():%H:%M:%S}  {message}")

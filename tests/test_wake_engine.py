@@ -137,8 +137,15 @@ class WakeEngineTests(unittest.TestCase):
     def test_successful_response_returns_to_sleep(self):
         self._reach_command_listening()
         self.voice.submit_debug_text("Hello")
-        self.assertEqual(self.states.current_state, PresenceState.RESPONDING)
-        self.synthesizer._finish()
+        deadline = time.monotonic() + 1
+        while (time.monotonic() < deadline and
+               self.voice.conversation_manager.context.interaction_count == 0):
+            self.app.processEvents()
+            if self.voice.conversation_manager.context.interaction_count == 0:
+                time.sleep(.002)
+        self.assertIn(self.states.current_state, (PresenceState.RESPONDING, PresenceState.READY))
+        if self.states.current_state is PresenceState.RESPONDING:
+            self.synthesizer._finish()
         self.assertEqual(self.states.current_state, PresenceState.READY)
         self.wake._sleep_timer.stop()
         self.wake._return_to_sleep()

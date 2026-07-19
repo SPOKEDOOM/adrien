@@ -1,6 +1,7 @@
 import struct
 import unittest
 import wave
+import time
 
 import numpy as np
 
@@ -276,6 +277,9 @@ class RealVoiceFoundationTests(unittest.TestCase):
         recognizer.stop()
         recognizer.recognized.emit("Hello")
         self.assertFalse(recognizer.is_listening)
+        deadline = time.monotonic() + 1
+        while time.monotonic() < deadline and states.current_state is not PresenceState.RESPONDING:
+            self.app.processEvents(); time.sleep(.002)
         self.assertEqual(states.current_state, PresenceState.RESPONDING)
         synthesizer._finish()
         self.assertEqual(transitions, [PresenceState.LISTENING, PresenceState.THINKING,

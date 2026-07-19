@@ -14,6 +14,8 @@ from app.voice.piper_synthesizer import PiperSpeechSynthesizer
 from app.voice.stt.faster_whisper_stt import FasterWhisperSTT
 from app.voice.windows_sapi_synthesizer import WindowsSapiSpeechSynthesizer
 from app.voice.voice_config import VoiceConfig
+from app.conversation.conversation_manager import ConversationManager
+from app.conversation.placeholder_backend import PlaceholderBackend
 
 
 class VoiceManager(QObject):
@@ -33,6 +35,7 @@ class VoiceManager(QObject):
     def __init__(
         self, state_manager: PresenceStateManager, config: VoiceConfig | None = None,
         recognizer: SpeechRecognizer | None = None, synthesizer: SpeechSynthesizer | None = None,
+        conversation_manager: ConversationManager | None = None,
     ) -> None:
         super().__init__()
         self.state_manager = state_manager
@@ -40,6 +43,7 @@ class VoiceManager(QObject):
         self.audio_controller = AudioController(self.config)
         self.recognizer = recognizer or self._create_recognizer()
         self.synthesizer = synthesizer or self._create_synthesizer()
+        self.conversation_manager = conversation_manager or ConversationManager(parent=self)
         self.recognizer.recognized.connect(self._on_recognized)
         self.recognizer.error.connect(self._on_error)
         self.recognizer.status_changed.connect(self._on_recognizer_status)
@@ -50,6 +54,8 @@ class VoiceManager(QObject):
         self.synthesizer.started.connect(self._on_speaking_started)
         self.synthesizer.finished.connect(self._on_finished)
         self.synthesizer.error.connect(self._on_error)
+        self.conversation_manager.reply_ready.connect(self._on_conversation_reply)
+        self.conversation_manager.error.connect(self._on_conversation_error)
 
     def _create_recognizer(self) -> SpeechRecognizer:
         use_real = self.config.stt_backend in ("auto", "faster-whisper")
@@ -120,6 +126,7 @@ class VoiceManager(QObject):
         return True
 
     def cancel(self) -> None:
+        self.conversation_manager.cancel()
         self.recognizer.cancel()
         self.synthesizer.stop()
         self.listening_changed.emit(False)
@@ -129,15 +136,7 @@ class VoiceManager(QObject):
 
     @staticmethod
     def placeholder_reply(text: str, now: datetime | None = None) -> str:
-        phrase = text.strip().lower()
-        current = now or datetime.now()
-        if phrase == "hello":
-            return "Hello. Nice to see you."
-        if phrase == "time":
-            return current.strftime("It is %H:%M.")
-        if phrase == "date":
-            return current.strftime("Today is %B %d, %Y.")
-        return "I'm ready for the next stage of my intelligence."
+        return PlaceholderBackend(clock=lambda: now or datetime.now()).generate_reply(text, None)
 
     def _on_recognized(self, text: str) -> None:
         print(f"VoiceManager received recognized: {text}", flush=True)
@@ -151,7 +150,13 @@ class VoiceManager(QObject):
         if self.state_manager.current_state is not PresenceState.THINKING:
             self._return_ready()
             return
-        reply = self.placeholder_reply(text)
+        if not self.conversation_manager.process(text):
+            self._return_ready()
+
+    def _on_conversation_reply(self, reply: str) -> None:
+        if self.state_manager.current_state is not PresenceState.THINKING:
+            self._return_ready()
+            return
         print(f"Voice reply generated: {reply}", flush=True)
         self.reply_generated.emit(reply)
         if not self.config.tts_enabled or self.audio_controller.muted:
@@ -161,6 +166,9 @@ class VoiceManager(QObject):
             self.audio_controller.set_mode(AudioMode.TTS_PLAYBACK)
             self.speaking_changed.emit(True)
             self.synthesizer.speak(reply)
+
+    def _on_conversation_error(self, message: str) -> None:
+        self.error.emit(message)
 
     def _on_recognizer_status(self, status: str) -> None:
         self.status_changed.emit(status)
@@ -189,5 +197,6 @@ class VoiceManager(QObject):
 
     def shutdown(self) -> None:
         self.cancel()
+        self.conversation_manager.shutdown()
         self.recognizer.shutdown()
         self.synthesizer.shutdown()

@@ -1,5 +1,18 @@
 # ADRIEN
 
+## Personality system
+
+ADRIEN's identity is provider-independent and stored in
+`app/personality/default_profile.json`. `PersonalityManager` loads and validates
+that profile, while `TraitRegistry` composes reusable behavioral traits.
+`PromptBuilder` produces the single system prompt passed through `AIRequest` to
+every backend, so future hosted or local providers receive the same identity.
+
+The Conversation tab in Developer Tools shows the active personality and can
+reload the profile or preview its generated system prompt without restarting the
+application. New personalities require profile/configuration changes rather
+than backend changes.
+
 ADRIEN is a modular PySide6 desktop assistant. Its voice pipeline supports typed
 development input, optional local microphone transcription, and local speech output.
 It includes a development Wake Engine, but no cloud service, LLM, or
@@ -68,3 +81,19 @@ The fallback opens no microphone stream. A trained production model can later re
 
 Developer Tools is hidden by default. Open it with the small gear button or `F12`.
 `Ctrl+Space` simulates wake while ADRIEN is sleeping.
+
+## Conversation engine
+
+Recognized speech is processed asynchronously by the backend-neutral
+`ConversationManager` before VoiceManager starts speech output. The default
+`PlaceholderBackend` is local and deterministic; it uses no network service or LLM.
+Conversation history is limited to the ten most recent exchanges. Backend, latest
+input/reply, interaction count, processing time, and status are visible in Developer
+Tools. Future providers implement `ConversationBackend` without changing audio, UI,
+or Presence-state ownership.
+
+The hybrid AI layer supports `local_only`, `cloud_only`, `local_first`, `cloud_first`,
+`automatic`, and `placeholder_only` routing. Local and OpenAI providers are explicitly
+unavailable offline stubs in this phase; they perform no network calls and need no keys
+or SDKs. The default local-first route therefore falls back predictably to the working
+placeholder backend. Privacy metadata can exclude cloud routing before provider selection.
