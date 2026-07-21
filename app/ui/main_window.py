@@ -1,6 +1,6 @@
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QKeySequence, QShortcut
-from PySide6.QtWidgets import QDockWidget, QHBoxLayout, QMainWindow, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QMainWindow, QSplitter, QStackedWidget, QVBoxLayout, QWidget
 from app.core import PresenceState, PresenceStateManager
 from app.ui.ai_core import AICore
 from app.ui.sidebar import Sidebar
@@ -8,6 +8,8 @@ from app.ui.status_bar import AdrienStatusBar
 from app.ui.developer_tools_panel import DeveloperToolsPanel
 from app.voice import VoiceManager
 from app.wake import WakeManager
+from app.settings import ApplicationSettings
+from app.ui.settings_page import SettingsPage
 
 
 class MainWindow(QMainWindow):
@@ -27,6 +29,17 @@ class MainWindow(QMainWindow):
         self.sidebar = Sidebar()
         self.state_manager = PresenceStateManager(parent=self)
         self.voice_manager = VoiceManager(self.state_manager)
+        self.application_settings = ApplicationSettings(parent=self)
+        ai_config = self.voice_manager.conversation_manager.ai_manager.config
+        ai_config.allow_cloud_ai = self.application_settings.cloud_processing
+        ai_config.default_backend = ("auto" if self.application_settings.default_provider == "automatic"
+                                     else self.application_settings.default_provider)
+        ai_config.provider_priority = self.application_settings.provider_priority
+        ai_config.hybrid_mode = (self.application_settings.routing_mode
+                                 if self.application_settings.default_provider == "automatic"
+                                 else {"groq": "groq_only", "openai": "openai_only",
+                                       "placeholder": "placeholder_only"}.get(
+                                           self.application_settings.default_provider, "automatic"))
         self.wake_manager = WakeManager(
             self.state_manager, self.voice_manager, self.voice_manager.audio_controller
         )
@@ -34,28 +47,43 @@ class MainWindow(QMainWindow):
         if self.DEVELOPMENT_STATE_CONTROLS:
             self.core.scene.materialization_seed = self.MATERIALIZATION_DEBUG_SEED
 
-        layout.addWidget(self.sidebar)
-        layout.addWidget(self.core, 1)
-        self.setCentralWidget(container)
-
+        self.settings_page = SettingsPage(self.application_settings, self.voice_manager.conversation_manager)
+        self.content_stack = QStackedWidget()
+        self.sidebar_pages = {
+            "Home": self.core,
+            "Presence": self._information_page("Presence", "Presence state and ambient behavior are active. Runtime details are available in Developer Tools."),
+            "Voice": self.settings_page.page("Voice"),
+            "Brain": self._information_page("Brain", "Conversation, personality, and hybrid routing systems are active."),
+            "Memory": self.settings_page.page("Memory"),
+            "AI Providers": self.settings_page.page("AI Providers"),
+            "Privacy": self.settings_page.page("Privacy"),
+            "Developer": self.settings_page.page("Developer"),
+            "About": self.settings_page.page("About"),
+        }
         self.developer_tools_panel = DeveloperToolsPanel(
             self.wake_manager, self.voice_manager
         )
-        self.developer_dock = QDockWidget("Developer Tools", self)
-        self.developer_dock.setObjectName("developer_tools")
-        self.developer_dock.setAllowedAreas(Qt.RightDockWidgetArea)
-        self.developer_dock.setFeatures(QDockWidget.DockWidgetClosable)
-        self.developer_dock.setWidget(self.developer_tools_panel)
-        self.developer_dock.setMinimumWidth(360)
-        self.developer_dock.setMaximumWidth(380)
-        self.addDockWidget(Qt.RightDockWidgetArea, self.developer_dock)
-        self.developer_dock.setFloating(True)
-        self.developer_dock.resize(380, 650)
-        self.developer_dock.hide()
+        for name in Sidebar.PAGE_NAMES: self.content_stack.addWidget(self.sidebar_pages[name])
+        self.content_splitter = QSplitter(Qt.Horizontal)
+        self.content_splitter.setObjectName("contentSplitter")
+        self.content_splitter.setChildrenCollapsible(False)
+        self.content_splitter.addWidget(self.content_stack)
+        self.content_splitter.addWidget(self.developer_tools_panel)
+        self.content_splitter.setStretchFactor(0, 1)
+        self.content_splitter.setStretchFactor(1, 0)
+        self.content_splitter.setSizes([1000, 380])
+        self.developer_tools_panel.hide()
+        layout.setContentsMargins(0, 0, 0, 0); layout.setSpacing(0)
+        layout.addWidget(self.sidebar); layout.addWidget(self.content_splitter, 1)
+        self.setCentralWidget(container)
 
         self.presence_status_bar = AdrienStatusBar()
         self.setStatusBar(self.presence_status_bar)
-        self.presence_status_bar.gear_button.clicked.connect(self.toggle_developer_tools)
+        self.sidebar.currentRowChanged.connect(self._sidebar_changed); self.sidebar.setCurrentRow(0)
+        self.application_settings.changed.connect(self._setting_changed)
+        self.settings_page.developer_mode_changed.connect(self._developer_mode_changed)
+        self.settings_page.open_developer_tools_requested.connect(self.open_developer_tools)
+        self.developer_tools_panel.close_requested.connect(self.close_developer_tools)
         self.voice_manager.error.connect(self.presence_status_bar.show_error)
         self.wake_manager.error.connect(self.presence_status_bar.show_error)
         self.state_manager.state_changed.connect(self._on_state_changed)
@@ -70,10 +98,46 @@ class MainWindow(QMainWindow):
         self._developer_tab_shortcuts: list[QShortcut] = []
         self._install_state_shortcuts()
         self._install_developer_tab_shortcuts()
-        self.developer_dock.visibilityChanged.connect(self._set_developer_shortcuts_enabled)
 
         QTimer.singleShot(500, self._begin_materialization)
         self.wake_manager.start()
+        self._developer_mode_changed(self.application_settings.developer_mode)
+        self.developer_tools_panel.set_test_buttons_visible(self.application_settings.test_buttons)
+
+    def _sidebar_changed(self, row: int) -> None:
+        if 0 <= row < self.content_stack.count():
+            self.content_stack.setCurrentIndex(row)
+            if row != 0:
+                self.close_developer_tools()
+
+    @staticmethod
+    def _information_page(title: str, description: str) -> QWidget:
+        page = QWidget(); layout = QVBoxLayout(page); layout.setContentsMargins(32, 32, 32, 32)
+        heading = QLabel(title); heading.setStyleSheet("font-size:22px; font-weight:600; color:#8ed8ff;")
+        detail = QLabel(description); detail.setWordWrap(True)
+        layout.addWidget(heading); layout.addWidget(detail); layout.addStretch(); return page
+
+    def _setting_changed(self, key: str, value) -> None:
+        config = self.voice_manager.conversation_manager.ai_manager.config
+        if key == "privacy/cloud_processing":
+            self.voice_manager.conversation_manager.set_cloud_ai_allowed(bool(value))
+        elif key == "ai/default_provider":
+            config.default_backend = "auto" if value == "automatic" else str(value)
+            mode = (self.application_settings.routing_mode if value == "automatic" else
+                    {"groq": "groq_only", "openai": "openai_only",
+                     "placeholder": "placeholder_only"}.get(str(value), "automatic"))
+            self.voice_manager.conversation_manager.set_hybrid_mode(mode)
+        elif key == "ai/provider_priority":
+            config.provider_priority = self.application_settings.provider_priority
+        elif key == "ai/routing_mode" and self.application_settings.default_provider == "automatic":
+            self.voice_manager.conversation_manager.set_hybrid_mode(str(value))
+        elif key == "developer/test_buttons":
+            self.developer_tools_panel.set_test_buttons_visible(bool(value))
+
+    def _developer_mode_changed(self, enabled: bool) -> None:
+        self.settings_page.open_developer_tools.setEnabled(enabled)
+        if not enabled:
+            self.close_developer_tools()
 
     def _begin_materialization(self) -> None:
         self.state_manager.transition_to(PresenceState.MATERIALIZING)
@@ -167,9 +231,27 @@ class MainWindow(QMainWindow):
         self._show_ambient_status()
 
     def toggle_developer_tools(self) -> None:
-        self.developer_dock.setVisible(not self.developer_dock.isVisible())
-        if self.developer_dock.isVisible():
-            self.developer_dock.raise_()
+        if not self.application_settings.developer_mode:
+            return
+        if self.developer_tools_panel.isVisible():
+            self.close_developer_tools()
+        else:
+            self.open_developer_tools()
+
+    def open_developer_tools(self) -> None:
+        if not self.application_settings.developer_mode:
+            return
+        self.sidebar.setCurrentRow(0)
+        self.content_stack.setCurrentWidget(self.core)
+        self.developer_tools_panel.show()
+        self.content_splitter.setSizes([max(1, self.content_splitter.width() - 380), 380])
+        self.developer_tools_panel.raise_()
+        self.developer_tools_panel.setFocus(Qt.OtherFocusReason)
+        self._set_developer_shortcuts_enabled(True)
+
+    def close_developer_tools(self) -> None:
+        self.developer_tools_panel.hide()
+        self._set_developer_shortcuts_enabled(False)
 
     def _install_developer_tab_shortcuts(self) -> None:
         for index in range(4):

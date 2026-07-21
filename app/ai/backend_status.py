@@ -9,6 +9,8 @@ class BackendState(Enum):
     UNINITIALIZED = auto()
     INITIALIZING = auto()
     AVAILABLE = auto()
+    DEGRADED = auto()
+    DISABLED = auto()
     UNAVAILABLE = auto()
     BUSY = auto()
     ERROR = auto()

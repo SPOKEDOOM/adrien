@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QComboBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPlainTextEdit,
+    QCheckBox, QComboBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPlainTextEdit,
     QPushButton, QTabWidget, QToolButton, QVBoxLayout, QWidget,
 )
 
@@ -13,17 +13,28 @@ class DeveloperToolsPanel(QWidget):
     """Compact tabbed developer workspace with no outer scrolling surface."""
 
     TAB_NAMES = ("Voice", "Wake", "Conversation", "Diagnostics")
+    close_requested = Signal()
 
     def __init__(self, wake_manager, voice_manager) -> None:
         super().__init__()
         self.wake_manager = wake_manager
         self.voice_manager = voice_manager
-        self.setMinimumWidth(350)
-        self.setMaximumWidth(380)
+        self.setObjectName("developerToolsPanel")
+        self.setMinimumWidth(340)
+        self.setMaximumWidth(480)
         self.setMinimumHeight(560)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setContentsMargins(8, 6, 8, 8)
         layout.setSpacing(6)
+        header = QWidget(); header.setObjectName("developerToolsHeader")
+        header_layout = QHBoxLayout(header); header_layout.setContentsMargins(4, 0, 0, 0)
+        title = QLabel("Developer Tools"); title.setObjectName("developerToolsTitle")
+        self.close_button = QToolButton(); self.close_button.setText("×")
+        self.close_button.setObjectName("developerToolsClose")
+        self.close_button.setToolTip("Close Developer Tools")
+        self.close_button.setAutoRaise(True); self.close_button.setFixedSize(28, 28)
+        header_layout.addWidget(title); header_layout.addStretch(); header_layout.addWidget(self.close_button)
+        layout.addWidget(header)
         self.tabs = QTabWidget()
         self.tabs.setDocumentMode(True)
         layout.addWidget(self.tabs)
@@ -31,7 +42,18 @@ class DeveloperToolsPanel(QWidget):
         self.tabs.addTab(self._wake_tab(), "Wake")
         self.tabs.addTab(self._conversation_tab(), "Conversation")
         self.tabs.addTab(self._diagnostics_tab(), "Diagnostics")
+        self.close_button.clicked.connect(self.close_requested)
+        self.setStyleSheet("""
+            QWidget#developerToolsPanel { background:#10151d; border-left:1px solid #2a3d50; }
+            QWidget#developerToolsHeader { border-bottom:1px solid #263648; }
+            QLabel#developerToolsTitle { color:#8ed8ff; font-size:15px; font-weight:600; }
+            QToolButton#developerToolsClose { color:#dce8f5; font-size:20px; border-radius:4px; }
+            QToolButton#developerToolsClose:hover { background:#293847; }
+        """)
         self._connect_updates()
+        self._conversation_diagnostics(
+            self.voice_manager.conversation_manager.diagnostics_snapshot()
+        )
 
     @staticmethod
     def _button_row(*buttons) -> QWidget:
@@ -120,6 +142,23 @@ class DeveloperToolsPanel(QWidget):
         self.selected_backend = self._readonly("none")
         self.local_backend_status = self._readonly("unavailable")
         self.openai_backend_status = self._readonly("unavailable")
+        self.openai_model = self._readonly("not configured")
+        self.openai_api_key = self._readonly("missing")
+        self.openai_environment_detected = self._readonly("no")
+        self.openai_sdk_installed = self._readonly("no")
+        self.openai_backend_enabled = self._readonly("no")
+        self.cloud_ai_status = self._readonly("allowed")
+        self.cloud_ai_allowed = QCheckBox("Allow cloud processing")
+        self.cloud_ai_allowed.setChecked(manager.ai_manager.config.allow_cloud_ai)
+        self.openai_response_id = self._readonly()
+        self.openai_latency = self._readonly("0.000 s")
+        self.openai_usage = self._readonly()
+        self.openai_error_category = self._readonly()
+        self.groq_backend_status = self._readonly("unavailable")
+        self.groq_model = self._readonly("not configured"); self.groq_api_key = self._readonly("missing")
+        self.groq_environment_detected = self._readonly("no"); self.groq_sdk_installed = self._readonly("no")
+        self.groq_backend_enabled = self._readonly("no"); self.groq_response_id = self._readonly()
+        self.groq_latency = self._readonly("0.000 s"); self.groq_usage = self._readonly(); self.groq_error = self._readonly()
         self.placeholder_backend_status = self._readonly("available")
         self.last_backend_used = self._readonly("none")
         self.fallback_used = self._readonly("no")
@@ -135,30 +174,25 @@ class DeveloperToolsPanel(QWidget):
         self.conversation_time = self._readonly("0.000 s")
         self.clear_conversation = QPushButton("Clear Conversation History")
         self.test_local = QPushButton("Test Local"); self.test_openai = QPushButton("Test OpenAI")
+        self.test_groq = QPushButton("Test Groq")
         self.test_placeholder = QPushButton("Test Placeholder")
         self.run_hybrid_test = QPushButton("Run Hybrid Test"); self.cancel_ai_request = QPushButton("Cancel Request")
         self.clear_conversation.setMaximumHeight(28)
-        form.addRow("Hybrid mode", self.hybrid_mode); form.addRow("Selected", self.selected_backend)
+        form.addRow("Selected", self.selected_backend)
         form.addRow("Local / OpenAI", self._button_row(self.local_backend_status, self.openai_backend_status))
+        form.addRow("Groq", self.groq_backend_status)
+        form.addRow("Cloud / response", self._button_row(self.cloud_ai_status, self.openai_response_id))
+        form.addRow("Latency / error", self._button_row(self.openai_latency, self.openai_error_category))
+        form.addRow("OpenAI usage", self.openai_usage)
+        form.addRow("Groq response", self.groq_response_id)
+        form.addRow("Groq latency / error", self._button_row(self.groq_latency, self.groq_error))
+        form.addRow("Groq usage", self.groq_usage)
         form.addRow("Placeholder", self.placeholder_backend_status)
         form.addRow("Last backend", self.last_backend_used); form.addRow("Fallback used", self.fallback_used)
         form.addRow("Last user input", self.conversation_input); form.addRow("Last reply", self.conversation_reply)
         form.addRow("Conversation count", self.conversation_count); form.addRow("Processing time", self.conversation_time)
         form.addRow("Last AI error", self.ai_last_error)
         form.addRow("Personality", self.current_personality)
-        form.addRow(self._button_row(self.reload_personality, self.preview_personality_prompt))
-        form.addRow(self._button_row(self.test_local, self.test_openai, self.test_placeholder))
-        form.addRow(self._button_row(self.run_hybrid_test, self.cancel_ai_request))
-        form.addRow(self.clear_conversation)
-        self.clear_conversation.clicked.connect(manager.clear_history)
-        self.hybrid_mode.currentTextChanged.connect(manager.set_hybrid_mode)
-        self.test_local.clicked.connect(lambda: manager.test_backend("local"))
-        self.test_openai.clicked.connect(lambda: manager.test_backend("openai"))
-        self.test_placeholder.clicked.connect(lambda: manager.test_backend("placeholder"))
-        self.run_hybrid_test.clicked.connect(lambda: self.voice_manager.submit_debug_text("Hello"))
-        self.cancel_ai_request.clicked.connect(self.voice_manager.cancel)
-        self.reload_personality.clicked.connect(manager.reload_personality)
-        self.preview_personality_prompt.clicked.connect(self._preview_personality_prompt)
         return tab
 
     def _diagnostics_tab(self) -> QWidget:
@@ -219,6 +253,8 @@ class DeveloperToolsPanel(QWidget):
             lambda: self._set_field(self.worker_status, "idle")
         )
         self.voice_manager.conversation_manager.diagnostics_changed.connect(self._conversation_diagnostics)
+        self.voice_manager.conversation_manager.openai_test_finished.connect(self._openai_test_result)
+        self.voice_manager.conversation_manager.groq_test_finished.connect(self._groq_test_result)
 
     def _toggle_advanced(self, opened: bool) -> None:
         self.advanced_details.setVisible(opened)
@@ -262,11 +298,68 @@ class DeveloperToolsPanel(QWidget):
         statuses = diagnostics["backend_statuses"]
         self._set_field(self.local_backend_status, statuses.get("local", "unregistered"))
         self._set_field(self.openai_backend_status, statuses.get("openai", "unregistered"))
+        self._set_field(self.groq_backend_status, statuses.get("groq", "unregistered"))
         self._set_field(self.placeholder_backend_status, statuses.get("placeholder", "unregistered"))
         self._set_field(self.last_backend_used, diagnostics["selected_backend"])
         self._set_field(self.fallback_used, "yes" if diagnostics["fallback_used"] else "no")
         self._set_field(self.ai_last_error, diagnostics["last_error"] or "—")
         self._set_field(self.current_personality, diagnostics["personality"])
+        self._set_field(self.openai_model, diagnostics["openai_model"])
+        self._set_field(self.openai_api_key, diagnostics["openai_api_key"])
+        self._set_field(self.openai_environment_detected, diagnostics["openai_environment_detected"])
+        self._set_field(self.openai_sdk_installed, diagnostics["openai_sdk_installed"])
+        self._set_field(self.openai_backend_enabled, diagnostics["openai_backend_enabled"])
+        self._set_field(self.cloud_ai_status, diagnostics["cloud_ai"])
+        self.cloud_ai_allowed.blockSignals(True)
+        self.cloud_ai_allowed.setChecked(diagnostics["cloud_ai"] == "allowed")
+        self.cloud_ai_allowed.blockSignals(False)
+        self._set_field(self.openai_response_id, diagnostics["openai_response_id"])
+        self._set_field(self.openai_latency, f"{float(diagnostics['openai_latency']):.3f} s")
+        usage = diagnostics["openai_usage"]
+        self._set_field(self.openai_usage, (
+            f"in={usage.get('input_tokens', '—')} out={usage.get('output_tokens', '—')} "
+            f"total={usage.get('total_tokens', '—')}"
+        ))
+        self._set_field(self.openai_error_category, diagnostics["openai_error_category"])
+        self._set_field(self.groq_model, diagnostics["groq_model"]); self._set_field(self.groq_api_key, diagnostics["groq_api_key"])
+        self._set_field(self.groq_environment_detected, diagnostics["groq_environment_detected"])
+        self._set_field(self.groq_sdk_installed, diagnostics["groq_sdk_installed"])
+        self._set_field(self.groq_backend_enabled, diagnostics["groq_backend_enabled"])
+        self._set_field(self.groq_response_id, diagnostics["groq_response_id"])
+        self._set_field(self.groq_latency, f"{float(diagnostics['groq_latency']):.3f} s")
+        groq_usage = diagnostics["groq_usage"]
+        self._set_field(self.groq_usage, f"in={groq_usage.get('input_tokens', '—')} out={groq_usage.get('output_tokens', '—')} total={groq_usage.get('total_tokens', '—')}")
+        self._set_field(self.groq_error, diagnostics["groq_error"])
+
+    def _test_openai(self) -> None:
+        self.test_openai.setEnabled(False)
+        if not self.voice_manager.conversation_manager.test_openai_connection():
+            self.test_openai.setEnabled(True)
+
+    def _openai_test_result(self, result: dict) -> None:
+        self.test_openai.setEnabled(True)
+        if result.get("success"):
+            message = (f"SUCCESS\nBackend: {result['backend']}\nModel: {result['model']}\n"
+                       f"Response time: {result['elapsed']:.3f} s\nResponse: {result['text']}")
+        else:
+            message = f"FAILURE\nCategory: {result.get('category', 'unknown')}\n{result.get('message', '')}"
+        self.test_openai.setToolTip(message); self._log(message.replace("\n", " · "))
+
+    def _test_groq(self) -> None:
+        self.test_groq.setEnabled(False)
+        if not self.voice_manager.conversation_manager.test_groq_connection():
+            self.test_groq.setEnabled(True)
+
+    def _groq_test_result(self, result: dict) -> None:
+        self.test_groq.setEnabled(True)
+        if result.get("success"):
+            message = (f"SUCCESS\nBackend: {result['backend']}\nModel: {result['model']}\n"
+                       f"Response time: {result['elapsed']:.3f} s\nResponse: {result['text']}\n"
+                       f"Usage: {result.get('usage', {})}")
+        else:
+            message = (f"FAILURE\nCategory: {result.get('category', 'unknown')}\n"
+                       f"Code: {result.get('code', '—')}\n{result.get('message', '')}")
+        self.test_groq.setToolTip(message); self._log(message.replace("\n", " · "))
 
     def _preview_personality_prompt(self) -> None:
         prompt = self.voice_manager.conversation_manager.preview_system_prompt()
@@ -287,3 +380,9 @@ class DeveloperToolsPanel(QWidget):
 
     def _log(self, message: str) -> None:
         self.event_log.appendPlainText(f"{datetime.now():%H:%M:%S}  {message}")
+
+    def set_test_buttons_visible(self, visible: bool) -> None:
+        for control in (self.voice_start, self.voice_stop, self.voice_cancel, self.test_input,
+                        self.wake_start, self.wake_stop, self.simulate_wake, self.force_sleep,
+                        self.simulate_low, self.simulate_high):
+            control.setVisible(visible)

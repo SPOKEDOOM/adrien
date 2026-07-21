@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QLabel, QPushButton, QStatusBar
+from PySide6.QtWidgets import QLabel, QStatusBar
 
 
 class AdrienStatusBar(QStatusBar):
@@ -9,10 +9,6 @@ class AdrienStatusBar(QStatusBar):
 
         self.indicator = QLabel("●")
         self.indicator.setToolTip("ADRIEN status")
-        self.gear_button = QPushButton("⚙")
-        self.gear_button.setFlat(True)
-        self.gear_button.setFixedSize(26, 22)
-
         self.cpu = QLabel("CPU: --%")
         self.ram = QLabel("RAM: --%")
         self.gpu = QLabel("GPU: --%")
@@ -21,7 +17,6 @@ class AdrienStatusBar(QStatusBar):
         self.ram.hide()
         self.gpu.hide()
         self.addPermanentWidget(self.indicator)
-        self.addPermanentWidget(self.gear_button)
         self._set_indicator("#68717d")
 
     def _set_indicator(self, color: str) -> None:

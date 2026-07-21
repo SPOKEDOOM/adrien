@@ -11,7 +11,7 @@ from PySide6.QtCore import QObject, Signal
 from app.ai.ai_config import AIConfig
 from app.ai.ai_response import AIResponse
 from app.ai.backend_status import BackendHealth, BackendState
-from app.ai.errors import DuplicateRequestError, RequestCancelledError
+from app.ai.errors import DuplicateRequestError, ProviderError, RequestCancelledError
 from app.ai.hybrid_router import HybridRouter
 
 logger = logging.getLogger(__name__)
@@ -27,10 +27,12 @@ class AIBackendManager(QObject):
     request_cancelled = Signal(str)
 
     def __init__(self, config: AIConfig | None = None, router: HybridRouter | None = None,
-                 parent=None) -> None:
+                 parent=None, openai_config=None, groq_config=None) -> None:
         super().__init__(parent)
         self.config = config or AIConfig()
         self.router = router or HybridRouter()
+        self.openai_config = openai_config
+        self.groq_config = groq_config
         self.backends = {}
         self.statuses: dict[str, BackendHealth] = {}
         self._lock = threading.Lock()
@@ -49,7 +51,11 @@ class AIBackendManager(QObject):
             health = self.statuses[name]; health.status = BackendState.INITIALIZING; self._emit_status()
             try:
                 backend.initialize()
-                health.status = BackendState.AVAILABLE if backend.is_available() else BackendState.UNAVAILABLE
+                provider_status = getattr(backend, "last_status", "")
+                if provider_status == "disabled": health.status = BackendState.DISABLED
+                elif provider_status == "error": health.status = BackendState.ERROR
+                else: health.status = BackendState.AVAILABLE if backend.is_available() else BackendState.UNAVAILABLE
+                health.current_model = getattr(backend, "model_name", "")
                 health.last_error = "" if health.status is BackendState.AVAILABLE else "Backend unavailable"
             except Exception as exc:
                 health.status = BackendState.ERROR; health.record_failure(str(exc))
@@ -76,7 +82,7 @@ class AIBackendManager(QObject):
         except Exception as exc:
             available = False; health.status = BackendState.ERROR; health.record_failure(str(exc))
         health.last_health_check = datetime.now(timezone.utc)
-        print(f"Backend health status changed: {name} -> {health.status.name}", flush=True)
+        logger.info("Backend health status changed backend=%s status=%s", name, health.status.name)
         self._emit_status(); return available
 
     def generate_reply(self, request) -> AIResponse:
@@ -86,27 +92,34 @@ class AIBackendManager(QObject):
             self._active_request_id = request.request_id
             self._cancelled_request_ids.discard(request.request_id)
         started = time.monotonic(); deadline = started + request.timeout_seconds
-        failed = []; previous = ""
-        print(f"AI request started: {request.request_id}", flush=True)
-        print(f"Hybrid mode: {self.config.hybrid_mode}", flush=True)
+        failed = []; failure_reasons = {}; previous = ""
+        logger.info("AI request started request_id=%s hybrid_mode=%s",
+                    request.request_id, self.config.hybrid_mode)
         self.request_started.emit(request.request_id)
         try:
             routes = self.router.route(request, self.config)
-            if not routes: return self._failure(request, "No permitted AI backend is available.", started, failed)
+            if not routes: return self._failure(request, "No permitted AI backend is available.", started, failed, failure_reasons=failure_reasons)
             for index, name in enumerate(routes):
                 if request.request_id in self._cancelled_request_ids: raise RequestCancelledError("AI request cancelled.")
                 if time.monotonic() >= deadline:
-                    print("AI request timed out", flush=True); failed.append(name); continue
+                    logger.warning("AI request timed out request_id=%s backend=%s", request.request_id, name)
+                    failed.append(name); failure_reasons[name] = "timeout"; continue
                 if previous:
-                    print(f"Fallback: {previous} -> {name}", flush=True)
+                    logger.info("Fallback selected request_id=%s from=%s to=%s",
+                                request.request_id, previous, name)
                     self.fallback_started.emit(previous, name)
                 previous = name
-                print(f"Attempting backend: {name}", flush=True)
+                logger.info("Attempting backend request_id=%s backend=%s", request.request_id, name)
                 backend = self.backends.get(name)
                 health = self.statuses.get(name)
                 if backend is None or health is None or not backend.is_available():
-                    print(f"Backend unavailable: {name}", flush=True); failed.append(name)
-                    if health: health.status = BackendState.UNAVAILABLE
+                    logger.info("Backend unavailable request_id=%s backend=%s", request.request_id, name)
+                    failed.append(name); failure_reasons[name] = "unavailable"
+                    if health:
+                        provider_status = getattr(backend, "last_status", "") if backend else ""
+                        health.status = (BackendState.ERROR if provider_status == "error"
+                                         else BackendState.DISABLED if provider_status == "disabled"
+                                         else BackendState.UNAVAILABLE)
                     continue
                 self.backend_selected.emit(name); health.status = BackendState.BUSY; self._emit_status()
                 attempt = time.monotonic()
@@ -120,27 +133,44 @@ class AIBackendManager(QObject):
                     health.record_success(elapsed_attempt); health.status = BackendState.AVAILABLE
                     final = replace(response, processing_time=time.monotonic() - started,
                                     fallback_used=index > 0 or bool(failed),
-                                    metadata={**response.metadata, "failed_backends": tuple(failed)})
+                                    metadata={**response.metadata, "failed_backends": tuple(failed),
+                                              "failure_reasons": dict(failure_reasons)})
                     self.last_response = final; self.response_ready.emit(final); self._emit_status()
-                    print("AI response completed", flush=True); return final
+                    logger.info("AI response completed request_id=%s backend=%s elapsed=%.3f",
+                                request.request_id, name, final.processing_time)
+                    return final
                 except RequestCancelledError: raise
-                except Exception as exc:
-                    failed.append(name); health.record_failure(str(exc)); health.status = BackendState.ERROR
+                except ProviderError as exc:
+                    failed.append(name); failure_reasons[name] = exc.category
+                    health.record_failure(exc.user_message)
+                    health.status = BackendState.DEGRADED if exc.transient else BackendState.ERROR
                     self._emit_status(); continue
-            return self._failure(request, "No AI backend could complete the request.", started, failed)
+                except Exception as exc:
+                    failed.append(name); failure_reasons[name] = "unknown"
+                    health.record_failure(str(exc)); health.status = BackendState.ERROR
+                    self._emit_status(); continue
+            return self._failure(request, "No AI backend could complete the request.", started, failed,
+                                 failure_reasons=failure_reasons)
         except RequestCancelledError as exc:
-            response = self._failure(request, str(exc), started, failed, emit_failure=False)
-            self.request_cancelled.emit(request.request_id); print("AI request cancelled", flush=True)
+            response = self._failure(request, str(exc), started, failed, emit_failure=False,
+                                     failure_reasons=failure_reasons, category="cancelled")
+            self.request_cancelled.emit(request.request_id)
+            logger.info("AI request cancelled request_id=%s", request.request_id)
             return response
         finally:
             with self._lock:
                 if self._active_request_id == request.request_id: self._active_request_id = None
                 self._cancelled_request_ids.discard(request.request_id)
 
-    def _failure(self, request, message, started, failed, emit_failure=True):
+    def _failure(self, request, message, started, failed, emit_failure=True,
+                 failure_reasons=None, category=""):
         response = AIResponse(request.request_id, "", "", success=False, error_message=message,
                               processing_time=time.monotonic() - started,
-                              fallback_used=bool(failed), metadata={"failed_backends": tuple(failed)})
+                              fallback_used=bool(failed), metadata={
+                                  "failed_backends": tuple(failed),
+                                  "failure_reasons": dict(failure_reasons or {}),
+                                  "error_category": category,
+                              })
         self.last_response = response
         if emit_failure: self.request_failed.emit(message)
         return response

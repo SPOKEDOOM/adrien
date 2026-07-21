@@ -228,18 +228,19 @@ class WakeEngineTests(unittest.TestCase):
             self.assertEqual(self.states.current_state, PresenceState.SLEEP)
         self.assertEqual(len(accepted), 3)
 
-    def test_developer_tools_hidden_and_toggle_without_cluttering_central_layout(self):
+    def test_developer_tools_hidden_and_embedded_in_central_layout(self):
         window = MainWindow()
-        self.assertFalse(window.developer_dock.isVisible())
+        self.assertFalse(window.developer_tools_panel.isVisible())
         central_layout = window.centralWidget().layout()
-        self.assertEqual(central_layout.count(), 2)  # Sidebar and core only.
+        self.assertEqual(central_layout.count(), 2)  # Sidebar and central splitter.
         window.show()
         self.app.processEvents()
         window.toggle_developer_tools()
-        self.assertTrue(window.developer_dock.isVisible())
-        self.assertLessEqual(window.developer_dock.maximumWidth(), 380)
+        self.assertTrue(window.developer_tools_panel.isVisible())
+        self.assertIs(window.developer_tools_panel.parentWidget(), window.content_splitter)
+        self.assertLessEqual(window.developer_tools_panel.maximumWidth(), 480)
         window.toggle_developer_tools()
-        self.assertFalse(window.developer_dock.isVisible())
+        self.assertFalse(window.developer_tools_panel.isVisible())
         window.close()
 
 

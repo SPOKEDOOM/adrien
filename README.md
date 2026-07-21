@@ -1,5 +1,15 @@
 # ADRIEN
 
+## Settings and provider management
+
+ADRIEN uses one navigation level in its main sidebar. AI Providers, Privacy,
+Developer, Memory, Voice, and About are top-level pages. AI Providers contains
+Groq, OpenAI, Local, and Placeholder status cards, connection actions,
+default-provider selection, and an ordered automatic-routing list. Privacy owns the
+live cloud-processing switch, while Developer controls Developer Tools visibility and
+test controls. Settings use Qt's native `QSettings` store and apply immediately without
+restarting ADRIEN. Developer Tools remains a read-only runtime diagnostics surface.
+
 ## Personality system
 
 ADRIEN's identity is provider-independent and stored in
@@ -92,8 +102,10 @@ input/reply, interaction count, processing time, and status are visible in Devel
 Tools. Future providers implement `ConversationBackend` without changing audio, UI,
 or Presence-state ownership.
 
-The hybrid AI layer supports `local_only`, `cloud_only`, `local_first`, `cloud_first`,
-`automatic`, and `placeholder_only` routing. Local and OpenAI providers are explicitly
-unavailable offline stubs in this phase; they perform no network calls and need no keys
-or SDKs. The default local-first route therefore falls back predictably to the working
-placeholder backend. Privacy metadata can exclude cloud routing before provider selection.
+The hybrid AI layer supports `local_only`, `openai_only`, `local_first`, `openai_first`,
+`automatic`, and `placeholder_only` routing (with the former `cloud_*` names retained
+as compatibility aliases). The local provider remains a stub. The
+OpenAI Responses API integration is enabled only when its SDK and environment key are
+available; otherwise the default route falls back predictably to Placeholder. Privacy
+controls exclude cloud routing before provider selection. See
+[`docs/OpenAIBackend.md`](docs/OpenAIBackend.md) for safe setup and testing.

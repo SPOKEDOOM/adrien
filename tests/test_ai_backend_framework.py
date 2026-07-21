@@ -56,7 +56,7 @@ class AIBackendFrameworkTests(unittest.TestCase):
 
     def test_routing_modes(self):
         expected = {
-            "local_first": "local", "cloud_first": "openai", "automatic": "local",
+            "local_first": "local", "cloud_first": "openai", "automatic": "openai",
             "placeholder_only": "placeholder", "local_only": "local", "cloud_only": "openai",
         }
         for mode, backend in expected.items():
@@ -82,7 +82,7 @@ class AIBackendFrameworkTests(unittest.TestCase):
         fallbacks = []; manager.fallback_started.connect(lambda old, new: fallbacks.append((old, new)))
         response = manager.generate_reply(self.request())
         self.assertEqual(response.backend_used, "placeholder"); self.assertTrue(response.fallback_used)
-        self.assertEqual(response.metadata["failed_backends"], ("local", "openai"))
+        self.assertEqual(response.metadata["failed_backends"], ("local", "groq", "openai"))
         self.assertIn(("openai", "placeholder"), fallbacks); manager.shutdown()
 
     def test_unavailable_local_falls_back_to_cloud(self):
@@ -126,6 +126,15 @@ class AIBackendFrameworkTests(unittest.TestCase):
         self.assertEqual(router.route(self.request(allow_local=False, allow_cloud=False), config), ())
         manager = AIBackendManager(config); response = manager.generate_reply(self.request())
         self.assertFalse(response.success); self.assertIn("No AI backend", response.error_message)
+
+    def test_cloud_disabled_skips_openai(self):
+        openai = FakeBackend("openai")
+        manager = self.manager("openai_first", local=FakeBackend("local", available=False),
+                               cloud=openai, allow_cloud_ai=False)
+        response = manager.generate_reply(self.request())
+        self.assertEqual(response.backend_used, "placeholder")
+        self.assertEqual(openai.calls, 0)
+        manager.shutdown()
 
 
 if __name__ == "__main__": unittest.main()

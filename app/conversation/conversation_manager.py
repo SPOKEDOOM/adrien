@@ -5,9 +5,10 @@ import time
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
-from app.ai import AIBackendManager, AIConfig, AIRequest
+from app.ai import AIBackendManager, AIConfig, AIRequest, ProviderCredentialService
+from app.ai.errors import ProviderError
 from app.ai.backends import (
-    LegacyConversationBackendAdapter, LocalBackend, OpenAIBackend, PlaceholderAIBackend,
+    LegacyConversationBackendAdapter, LocalBackend, OpenAIBackend, GroqBackend, PlaceholderAIBackend,
 )
 from app.conversation.conversation_config import ConversationConfig
 from app.conversation.conversation_context import ConversationContext
@@ -20,17 +21,23 @@ class ConversationManager(QObject):
     processing_finished = Signal()
     error = Signal(str)
     diagnostics_changed = Signal(object)
+    openai_test_finished = Signal(object)
+    groq_test_finished = Signal(object)
     _worker_succeeded = Signal(int, str, object, float)
     _worker_failed = Signal(int, str, float)
 
     def __init__(self, config: ConversationConfig | None = None, backend=None,
                  parent: QObject | None = None, ai_manager: AIBackendManager | None = None,
-                 ai_config: AIConfig | None = None, personality_manager: PersonalityManager | None = None) -> None:
+                 ai_config: AIConfig | None = None, personality_manager: PersonalityManager | None = None,
+                 credential_service: ProviderCredentialService | None = None) -> None:
         super().__init__(parent)
         self.config = config or ConversationConfig()
         self.context = ConversationContext(self.config.maximum_history)
         self.personality_manager = personality_manager or PersonalityManager(parent=self)
         self.prompt_builder = PromptBuilder(self.personality_manager.trait_registry)
+        self.credential_service = credential_service or ProviderCredentialService(
+            cloud_enabled=(ai_config.cloud_backend_enabled if ai_config else True)
+        )
         self.backend = backend  # Compatibility reference for existing replaceable providers.
         self.ai_manager = ai_manager or self._build_ai_manager(backend, ai_config)
         self.last_user_input = ""
@@ -64,9 +71,14 @@ class ConversationManager(QObject):
             manager.register_backend(LegacyConversationBackendAdapter(backend))
             return manager
         config = ai_config or AIConfig(request_timeout_seconds=self.config.processing_timeout_seconds)
-        manager = AIBackendManager(config)
+        self.credential_service.cloud_enabled = config.cloud_backend_enabled
+        resolved = self.credential_service.refresh()
+        openai_config = resolved["openai"]
+        groq_config = resolved["groq"]
+        manager = AIBackendManager(config, openai_config=openai_config, groq_config=groq_config)
         manager.register_backend(LocalBackend())
-        manager.register_backend(OpenAIBackend())
+        manager.register_backend(GroqBackend(groq_config))
+        manager.register_backend(OpenAIBackend(openai_config))
         manager.register_backend(PlaceholderAIBackend())
         return manager
 
@@ -165,8 +177,17 @@ class ConversationManager(QObject):
         self._emit_diagnostics(); self.reply_ready.emit(friendly)
 
     def _emit_diagnostics(self) -> None:
+        self.diagnostics_changed.emit(self.diagnostics_snapshot())
+
+    def diagnostics_snapshot(self) -> dict:
         statuses = {name: health.status.name.lower() for name, health in self.ai_manager.status_snapshot().items()}
-        self.diagnostics_changed.emit({
+        openai = self.ai_manager.backends.get("openai")
+        openai_config = getattr(openai, "config", None)
+        response_id = getattr(openai, "last_response_id", "")
+        groq = self.ai_manager.backends.get("groq")
+        groq_config = getattr(groq, "config", None)
+        groq_response_id = getattr(groq, "last_response_id", "")
+        return {
             "backend": self.backend_name, "last_user_input": self.last_user_input,
             "last_reply": self.last_reply, "conversation_count": self.context.interaction_count,
             "processing_seconds": self.last_processing_seconds, "backend_status": self.backend_status,
@@ -175,14 +196,132 @@ class ConversationManager(QObject):
             "failed_backends": self.failed_backends, "backend_statuses": statuses,
             "last_error": self.last_error,
             "personality": self.personality_manager.profile.name,
-        })
+            "cloud_ai": "allowed" if self.ai_manager.config.allow_cloud_ai else "disabled",
+            "openai_model": getattr(openai, "model_name", "") or "not configured",
+            "openai_api_key": "configured" if getattr(openai_config, "api_key_present", False) else "missing",
+            "openai_environment_detected": "yes" if getattr(openai_config, "environment_detected", False) else "no",
+            "openai_sdk_installed": "yes" if getattr(openai, "sdk_installed", False) else "no",
+            "openai_backend_enabled": "yes" if getattr(openai_config, "enabled", False) else "no",
+            "openai_response_id": (response_id[:12] + "…") if len(response_id) > 12 else (response_id or "—"),
+            "openai_latency": getattr(openai, "last_latency", 0.0),
+            "openai_usage": dict(getattr(openai, "last_usage", {})),
+            "openai_error_category": getattr(openai, "last_error_category", "") or "—",
+            "groq_model": getattr(groq, "model_name", "") or "not configured",
+            "groq_api_key": "configured" if getattr(groq_config, "api_key_present", False) else "missing",
+            "groq_environment_detected": "yes" if getattr(groq_config, "environment_detected", False) else "no",
+            "groq_sdk_installed": "yes" if getattr(groq, "sdk_installed", False) else "no",
+            "groq_backend_enabled": "yes" if getattr(groq_config, "enabled", False) else "no",
+            "groq_response_id": (groq_response_id[:12] + "…") if len(groq_response_id) > 12 else (groq_response_id or "—"),
+            "groq_latency": getattr(groq, "last_latency", 0.0),
+            "groq_usage": dict(getattr(groq, "last_usage", {})),
+            "groq_error": " / ".join(filter(None, (
+                getattr(groq, "last_error_category", ""), getattr(groq, "last_error_code", "")))) or "—",
+            "openai_key_source": self.credential_service.get_provider_key_source("openai"),
+            "openai_key_preview": self.credential_service.mask_secret(
+                self.credential_service.get_provider_key("openai")),
+            "groq_key_source": self.credential_service.get_provider_key_source("groq"),
+            "groq_key_preview": self.credential_service.mask_secret(
+                self.credential_service.get_provider_key("groq")),
+        }
+
+    def refresh_provider_configuration(self) -> None:
+        resolved = self.credential_service.refresh()
+        for name in ("groq", "openai"):
+            backend = self.ai_manager.backends.get(name)
+            if backend is None:
+                continue
+            backend.cancel_current_request()
+            backend._client = None
+            backend.config = resolved[name]
+            backend.model_name = resolved[name].model
+            if name == "groq":
+                self.ai_manager.groq_config = resolved[name]
+            else:
+                self.ai_manager.openai_config = resolved[name]
+            backend.initialize()
+            self.ai_manager.health_check(name)
+        self._emit_diagnostics()
 
     def set_hybrid_mode(self, mode: str) -> bool:
         if mode not in self.ai_manager.router.MODES: return False
         self.ai_manager.config.hybrid_mode = mode; self._emit_diagnostics(); return True
 
+    def set_cloud_ai_allowed(self, allowed: bool) -> None:
+        self.ai_manager.config.allow_cloud_ai = bool(allowed)
+        self._emit_diagnostics()
+
     def test_backend(self, name: str) -> bool:
         return self.ai_manager.health_check(name)
+
+    def test_openai_connection(self) -> bool:
+        backend = self.ai_manager.backends.get("openai")
+        if not self.ai_manager.config.allow_cloud_ai:
+            self.openai_test_finished.emit({"success": False, "category": "disabled",
+                                            "message": "Cloud AI is disabled."})
+            return False
+        if backend is not None and not getattr(backend.config, "api_key_present", False):
+            self.openai_test_finished.emit({"success": False, "category": "missing_key",
+                                            "message": "OpenAI API key is not configured."})
+            return False
+        if backend is not None and not getattr(backend, "sdk_installed", False):
+            self.openai_test_finished.emit({"success": False, "category": "sdk_missing",
+                                            "message": "OpenAI SDK is not installed."})
+            return False
+        if backend is None or not backend.is_available():
+            self.openai_test_finished.emit({"success": False, "category": "unavailable",
+                                            "message": "OpenAI is unavailable or not configured."})
+            return False
+        request = AIRequest(
+            user_text="Reply with exactly: ADRIEN OpenAI connection successful.",
+            system_prompt="Follow the user's formatting instruction exactly.",
+            preferred_backend="openai", allow_local=False,
+            allow_cloud=self.ai_manager.config.allow_cloud_ai,
+            timeout_seconds=getattr(backend.config, "timeout_seconds", 30.0),
+            metadata={"diagnostic_test": True},
+        )
+        def run():
+            try:
+                response = backend.test_connection(request)
+                result = {"success": True, "backend": response.backend_used,
+                          "model": response.model_name, "elapsed": response.processing_time,
+                          "text": response.reply_text}
+            except ProviderError as exc:
+                result = {"success": False, "category": exc.category, "message": exc.user_message}
+            except Exception:
+                result = {"success": False, "category": "unknown",
+                          "message": "OpenAI could not complete the connection test."}
+            self.openai_test_finished.emit(result); self._emit_diagnostics()
+        threading.Thread(target=run, name="adrien-openai-test", daemon=True).start()
+        return True
+
+    def test_groq_connection(self) -> bool:
+        backend = self.ai_manager.backends.get("groq")
+        if not self.ai_manager.config.allow_cloud_ai:
+            self.groq_test_finished.emit({"success": False, "category": "disabled", "message": "Cloud AI is disabled."}); return False
+        if backend is not None and not getattr(backend.config, "api_key_present", False):
+            self.groq_test_finished.emit({"success": False, "category": "missing_key", "message": "Groq API key is not configured."}); return False
+        if backend is not None and not getattr(backend, "sdk_installed", False):
+            self.groq_test_finished.emit({"success": False, "category": "sdk_missing", "message": "Groq SDK is not installed."}); return False
+        if backend is None or not backend.is_available():
+            self.groq_test_finished.emit({"success": False, "category": "unavailable", "message": "Groq is unavailable or not configured."}); return False
+        request = AIRequest(user_text="Reply with exactly: ADRIEN Groq connection successful.",
+                            system_prompt="Follow the user's formatting instruction exactly.",
+                            preferred_backend="groq", allow_local=False, allow_cloud=True,
+                            timeout_seconds=backend.config.timeout_seconds,
+                            metadata={"diagnostic_test": True})
+        def run():
+            try:
+                response = backend.test_connection(request)
+                result = {"success": True, "backend": response.backend_used, "model": response.model_name,
+                          "elapsed": response.processing_time, "text": response.reply_text,
+                          "usage": response.metadata.get("usage", {})}
+            except ProviderError as exc:
+                result = {"success": False, "category": exc.category, "code": exc.provider_code,
+                          "message": exc.user_message}
+            except Exception:
+                result = {"success": False, "category": "unknown", "message": "Groq could not complete the connection test."}
+            self.groq_test_finished.emit(result); self._emit_diagnostics()
+        threading.Thread(target=run, name="adrien-groq-test", daemon=True).start(); return True
 
     def reload_personality(self) -> bool:
         return self.personality_manager.reload()
