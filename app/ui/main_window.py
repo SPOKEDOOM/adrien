@@ -30,6 +30,19 @@ class MainWindow(QMainWindow):
         self.state_manager = PresenceStateManager(parent=self)
         self.voice_manager = VoiceManager(self.state_manager)
         self.application_settings = ApplicationSettings(parent=self)
+        self.voice_manager.conversation_manager.configure_memory(
+            self.application_settings.memory_maximum_recent_messages,
+            self.application_settings.memory_summary_threshold,
+            self.application_settings.memory_maximum_summary_words,
+            self.application_settings.memory_summaries_enabled,
+        )
+        self.voice_manager.conversation_manager.configure_long_term_memory(
+            self.application_settings.long_term_memory_enabled,
+            self.application_settings.memory_suggestions_enabled,
+            self.application_settings.memory_ask_before_saving,
+            self.application_settings.maximum_long_term_memories,
+            self.application_settings.disabled_memory_suggestion_categories,
+        )
         ai_config = self.voice_manager.conversation_manager.ai_manager.config
         ai_config.allow_cloud_ai = self.application_settings.cloud_processing
         ai_config.default_backend = ("auto" if self.application_settings.default_provider == "automatic"

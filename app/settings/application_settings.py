@@ -38,6 +38,27 @@ class ApplicationSettings(QObject):
     def experimental_features(self): return self._bool("developer/experimental", False)
     @property
     def test_buttons(self): return self._bool("developer/test_buttons", True)
+    @property
+    def memory_maximum_recent_messages(self): return int(self.store.value("memory/maximum_recent_messages", 30))
+    @property
+    def memory_summary_threshold(self): return int(self.store.value("memory/summary_threshold", 30))
+    @property
+    def memory_maximum_summary_words(self): return int(self.store.value("memory/maximum_summary_words", 500))
+    @property
+    def memory_summaries_enabled(self): return self._bool("memory/conversation_summaries_enabled", True)
+    @property
+    def long_term_memory_enabled(self): return self._bool("memory/long_term_enabled", True)
+    @property
+    def memory_suggestions_enabled(self): return self._bool("memory/suggestions_enabled", True)
+    @property
+    def memory_ask_before_saving(self): return self._bool("memory/ask_before_saving", True)
+    @property
+    def maximum_long_term_memories(self): return int(self.store.value("memory/maximum_memories", 500))
+    @property
+    def disabled_memory_suggestion_categories(self):
+        value = self.store.value("memory/disabled_suggestion_categories", [])
+        if isinstance(value, str): value = [item for item in value.split(",") if item]
+        return tuple(value)
 
     def set_value(self, key, value):
         self.store.setValue(key, value); self.store.sync(); self.changed.emit(key, value)

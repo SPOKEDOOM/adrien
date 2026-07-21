@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import threading
 import time
+import re
+from uuid import uuid4
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
@@ -12,7 +14,9 @@ from app.ai.backends import (
 )
 from app.conversation.conversation_config import ConversationConfig
 from app.conversation.conversation_context import ConversationContext
+from app.conversation.conversation_memory import ConversationMemory
 from app.personality import PersonalityManager, PromptBuilder
+from app.memory import LongTermMemoryManager
 
 
 class ConversationManager(QObject):
@@ -25,14 +29,23 @@ class ConversationManager(QObject):
     groq_test_finished = Signal(object)
     _worker_succeeded = Signal(int, str, object, float)
     _worker_failed = Signal(int, str, float)
+    _summary_ready = Signal(int, str, object)
+    _summary_failed = Signal(int)
 
     def __init__(self, config: ConversationConfig | None = None, backend=None,
                  parent: QObject | None = None, ai_manager: AIBackendManager | None = None,
                  ai_config: AIConfig | None = None, personality_manager: PersonalityManager | None = None,
-                 credential_service: ProviderCredentialService | None = None) -> None:
+                 credential_service: ProviderCredentialService | None = None,
+                 long_term_memory: LongTermMemoryManager | None = None) -> None:
         super().__init__(parent)
         self.config = config or ConversationConfig()
-        self.context = ConversationContext(self.config.maximum_history)
+        self.context = ConversationMemory(
+            self.config.maximum_recent_messages, self.config.summary_threshold,
+            self.config.maximum_summary_words, self.config.conversation_summaries_enabled,
+        )
+        self.memory = self.context
+        self.session_id = str(uuid4())
+        self.long_term_memory = long_term_memory or LongTermMemoryManager()
         self.personality_manager = personality_manager or PersonalityManager(parent=self)
         self.prompt_builder = PromptBuilder(self.personality_manager.trait_registry)
         self.credential_service = credential_service or ProviderCredentialService(
@@ -53,10 +66,13 @@ class ConversationManager(QObject):
         self._workers: set[threading.Thread] = set()
         self._workers_lock = threading.Lock()
         self._active_generation: int | None = None
+        self._memory_generation = 0
         self._shutdown = False
         self._legacy_backend_name = getattr(backend, "name", "") if backend else ""
         self._worker_succeeded.connect(self._finish_success)
         self._worker_failed.connect(self._finish_failure)
+        self._summary_ready.connect(self._finish_summary)
+        self._summary_failed.connect(self._fail_summary)
         self.ai_manager.status_changed.connect(lambda statuses: self._emit_diagnostics())
         self.personality_manager.personality_changed.connect(lambda profile: self._emit_diagnostics())
         self.personality_manager.error.connect(self.error)
@@ -95,6 +111,18 @@ class ConversationManager(QObject):
         if not normalized or self._shutdown:
             if not normalized: self.error.emit("Please say or enter something for me to process.")
             return False
+        memory_reply = self._handle_memory_command(normalized)
+        if memory_reply is not None:
+            self._complete_memory_command(normalized, memory_reply)
+            return True
+        if normalized.casefold().startswith(("what is my ", "what's my ", "which ")):
+            matches = self.long_term_memory.search_relevant(normalized, limit=3)
+            if matches:
+                self._complete_memory_command(normalized, "Based on saved memory: " + "; ".join(
+                    item.content for item in matches))
+                return True
+            self._complete_memory_command(normalized, "I don't have matching information in long-term memory.")
+            return True
         self.cancel()
         self._generation += 1
         generation = self._generation
@@ -107,7 +135,8 @@ class ConversationManager(QObject):
         request_metadata = {"privacy_level": self.ai_manager.config.default_privacy_level, **(metadata or {})}
         system_prompt = self.prompt_builder.build_prompt(
             self.personality_manager.profile, self.context,
-            configuration=f"hybrid mode={self.ai_manager.config.hybrid_mode}",
+            configuration=(f"hybrid mode={self.ai_manager.config.hybrid_mode}; "
+                           f"provider={self.ai_manager.config.default_backend}; session={self.session_id}"),
             task_instructions=str(request_metadata.pop("task_instructions", "")),
         )
         request_metadata["personality"] = {
@@ -115,6 +144,14 @@ class ConversationManager(QObject):
             "tone": self.personality_manager.profile.tone,
             "traits": self.personality_manager.profile.traits,
         }
+        existing_context = " ".join(
+            [self.memory.summary.text if self.memory.summary else ""] +
+            [f"{item.user_message} {item.adrien_reply}" for item in self.memory.exchanges]
+        )
+        relevant_memories = self.long_term_memory.search_relevant(normalized, exclude_text=existing_context)
+        if relevant_memories:
+            system_prompt += "\nRelevant Long-Term Memory:\n" + "\n".join(
+                f"- [{item.category}] {item.content}" for item in relevant_memories)
         request = AIRequest(
             user_text=normalized, conversation_history=self.context.exchanges,
             system_prompt=system_prompt,
@@ -161,6 +198,7 @@ class ConversationManager(QObject):
         self.backend_status = "ready"
         self.context.add_exchange(text, response.reply_text)
         self.processing_finished.emit(); self._emit_diagnostics(); self.reply_ready.emit(response.reply_text)
+        self._start_summary_if_needed()
 
     def _finish_failure(self, generation: int, friendly: str, elapsed: float) -> None:
         if generation != self._active_generation or self._shutdown: return
@@ -222,7 +260,129 @@ class ConversationManager(QObject):
             "groq_key_source": self.credential_service.get_provider_key_source("groq"),
             "groq_key_preview": self.credential_service.mask_secret(
                 self.credential_service.get_provider_key("groq")),
+            "memory_recent_messages": self.memory.recent_message_count,
+            "memory_summary_exists": bool(self.memory.summary),
+            "memory_summary_size": len(self.memory.summary.text) if self.memory.summary else 0,
+            "memory_summary_updated": (self.memory.summary.last_updated_timestamp.isoformat()
+                                       if self.memory.summary else "—"),
+            "memory_messages_summarized": (self.memory.summary.message_count_represented
+                                           if self.memory.summary else 0),
+            "memory_estimated_tokens": self.memory.estimated_tokens,
+            "memory_status": self.memory.status,
+            **{f"long_term_{key}": value for key, value in self.long_term_memory.diagnostics().items()},
         }
+
+    def configure_long_term_memory(self, enabled, suggestions_enabled, ask_before_saving,
+                                   maximum_memories, disabled_categories=()):
+        memory = self.long_term_memory; memory.enabled = bool(enabled)
+        memory.suggestions_enabled = bool(suggestions_enabled)
+        memory.ask_before_saving = bool(ask_before_saving)
+        memory.maximum_memories = max(1, int(maximum_memories))
+        memory.disabled_categories = set(disabled_categories); self._emit_diagnostics()
+
+    def _handle_memory_command(self, text):
+        lower = text.casefold().strip()
+        explicit = re.match(r"^(?:remember that|save this to memory[: ]*)\s*(.+)$", text, re.I)
+        if explicit:
+            content = explicit.group(1).strip().rstrip(".")
+            try:
+                memory = self.long_term_memory.create("note", content[:60], content,
+                                                      source="explicit user request", importance=4)
+                return f"I'll remember that: {memory.content}."
+            except ValueError as exc: return str(exc)
+        if lower.startswith("forget "):
+            query = re.sub(r"^forget (?:that |about )?", "", text, flags=re.I)
+            matches = self.long_term_memory.search_relevant(query, limit=5)
+            if not matches: return "I don't have a matching long-term memory to forget."
+            for memory in matches: self.long_term_memory.delete(memory.id)
+            return f"I forgot {len(matches)} matching long-term memory item{'s' if len(matches) != 1 else ''}."
+        if lower.startswith("what do you remember") or lower.startswith("do you remember"):
+            category = next((value for value in ("project", "goal", "preference", "identity", "tool") if value in lower), None)
+            query = re.sub(r"^(what do you remember|do you remember)(?: about)?", "", text, flags=re.I)
+            matches = self.long_term_memory.list(category=category) if category else self.long_term_memory.search_relevant(query or text, limit=5)
+            if not matches and not query.strip(): matches = self.long_term_memory.list()[:5]
+            if not matches: return "I don't have any matching long-term memory."
+            return "I remember: " + "; ".join(item.content for item in matches[:5])
+        candidate_match = re.search(r"\bcall me ([A-Za-z][A-Za-z -]{1,40}) from now on\b", text, re.I)
+        if (candidate_match and self.long_term_memory.suggestions_enabled and
+                self.long_term_memory.ask_before_saving):
+            name = candidate_match.group(1).strip()
+            candidate = self.long_term_memory.create_candidate("identity", "Preferred name", f"User prefers to be called {name}.")
+            if candidate: return f"Would you like me to remember that you prefer to be called {name}?"
+        return None
+
+    def _complete_memory_command(self, text, reply):
+        self.cancel(); self.last_user_input = text; self.last_reply = reply; self.last_backend_used = "memory"
+        self.backend_status = "ready"; self.processing_started.emit(text)
+        self.memory.add_exchange(text, reply); self.processing_finished.emit(); self._emit_diagnostics()
+        QTimer.singleShot(0, lambda value=reply: self.reply_ready.emit(value))
+
+    def refresh_long_term_memory_diagnostics(self): self._emit_diagnostics()
+    def rebuild_long_term_memory_index(self): self.long_term_memory.rebuild_index(); self._emit_diagnostics()
+    def clear_pending_memory_candidates(self): self.long_term_memory.clear_candidates(); self._emit_diagnostics()
+
+    def configure_memory(self, maximum_recent_messages, summary_threshold,
+                         maximum_summary_words, summaries_enabled):
+        self.memory.maximum_recent_messages = max(2, int(maximum_recent_messages))
+        self.memory.summary_threshold = max(2, int(summary_threshold))
+        self.memory.maximum_summary_words = max(20, int(maximum_summary_words))
+        self.memory.summaries_enabled = bool(summaries_enabled); self._emit_diagnostics()
+
+    def _start_summary_if_needed(self, *, force=False):
+        represented = self.memory.summary_candidates(force=force)
+        if not represented: return False
+        self._emit_diagnostics()
+        generation = self._memory_generation
+        worker = threading.Thread(target=self._generate_summary_tracked,
+                                  args=(generation, represented),
+                                  name="adrien-memory-summary", daemon=True)
+        with self._workers_lock: self._workers.add(worker)
+        worker.start()
+        return True
+
+    def force_summary(self): return self._start_summary_if_needed(force=True)
+
+    def _generate_summary_tracked(self, generation, represented):
+        try: self._generate_summary(generation, represented)
+        finally:
+            with self._workers_lock: self._workers.discard(threading.current_thread())
+
+    def _generate_summary(self, generation, represented):
+        try:
+            transcript = "\n".join(
+                f"User: {item.user_message}\nADRIEN: {item.adrien_reply}" for item in represented)
+            request = AIRequest(
+                user_text=("Summarize this conversation compactly. Preserve goals, decisions, user requests, "
+                           f"commitments, project state, open questions and unfinished work.\n{transcript}"),
+                system_prompt="Create a factual conversation-memory summary. Do not add new facts.",
+                conversation_history=(), timeout_seconds=self.config.processing_timeout_seconds,
+                allow_cloud=self.ai_manager.config.allow_cloud_ai,
+                metadata={"memory_summary": True},
+            )
+            routes = self.ai_manager.router.route(request, self.ai_manager.config)
+            text = ""
+            for name in routes:
+                backend = self.ai_manager.backends.get(name)
+                if name not in ("groq", "openai") or backend is None or not backend.is_available(): continue
+                try:
+                    response = backend.generate_reply(request)
+                    if response.success: text = response.reply_text; break
+                except Exception: continue
+            if not text: text = self.memory.deterministic_summary(represented)
+            self._summary_ready.emit(generation, text, represented)
+        except Exception:
+            self._summary_failed.emit(generation)
+
+    def _finish_summary(self, generation, text, represented):
+        if self._shutdown or generation != self._memory_generation: return
+        self.memory.apply_summary(text, represented); self._emit_diagnostics()
+
+    def _fail_summary(self, generation):
+        if generation != self._memory_generation: return
+        self.memory.summary_failed(); self._emit_diagnostics()
+
+    def clear_conversation_memory(self):
+        self.clear_history()
 
     def refresh_provider_configuration(self) -> None:
         resolved = self.credential_service.refresh()
@@ -348,5 +508,6 @@ class ConversationManager(QObject):
             self.processing_finished.emit(); self._emit_diagnostics()
 
     def clear_history(self) -> None:
+        self._memory_generation += 1
         self.context.clear(); self.last_user_input = ""; self.last_reply = ""
         self.last_processing_seconds = 0.0; self._emit_diagnostics()

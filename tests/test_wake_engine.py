@@ -221,7 +221,9 @@ class WakeEngineTests(unittest.TestCase):
         self.wake.start()
         for cycle in range(3):
             self.wake.simulate(0.95)
-            QTest.qWait(180)
+            deadline = time.monotonic() + 1.0
+            while self.states.current_state is not PresenceState.LISTENING and time.monotonic() < deadline:
+                self.app.processEvents(); QTest.qWait(5)
             self.assertEqual(self.states.current_state, PresenceState.LISTENING)
             self.wake._command_timer.stop()
             self.wake._command_timeout()

@@ -1,10 +1,11 @@
 from app.conversation.conversation_backend import ConversationBackend
 from app.conversation.conversation_config import ConversationConfig
 from app.conversation.conversation_context import ConversationContext, ConversationExchange
+from app.conversation.conversation_memory import ConversationMemory, ConversationSummary
 from app.conversation.placeholder_backend import PlaceholderBackend
 
 __all__ = [
-    "ConversationBackend", "ConversationConfig", "ConversationContext",
+    "ConversationBackend", "ConversationConfig", "ConversationContext", "ConversationMemory", "ConversationSummary",
     "ConversationExchange", "ConversationManager", "PlaceholderBackend",
 ]
 

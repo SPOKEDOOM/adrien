@@ -26,6 +26,10 @@ class PromptBuilder:
             lines.append(f"Current configuration: {configuration}")
         if context and context.exchanges:
             lines.append(f"Conversation continuity: {len(context.exchanges)} recent exchanges are available.")
+        summary = getattr(context, "summary", None) if context else None
+        if summary and summary.text:
+            lines.append("Conversation summary (older context):")
+            lines.append(summary.text)
         if task_instructions.strip():
             lines.append(f"Task instructions: {task_instructions.strip()}")
         return "\n".join(lines)
